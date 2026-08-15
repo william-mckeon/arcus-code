@@ -14,9 +14,32 @@ Examples: `session-recovery`, `fix-scroll-state`, `regenerate-sdk`.
 
 Use conventional commit-style messages and PR titles: `type(scope): summary`.
 
-Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`.
+Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`. (`opencode` is the directory name; the package it publishes is `arcus-code`.)
 
 Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(sdk): regenerate types`.
+
+## Branding
+
+`packages/core/src/brand.ts` is the single source for product identity. Read it
+before renaming anything.
+
+Three namespaces coexist on purpose:
+
+- `name`, `cli`, `slug`, `config*` are ours. Rename freely.
+- `legacy` values are the pre-rename names. Accepted on read so existing
+  installs and projects keep working; never written. Removing one is a
+  breaking change.
+- `upstream` values belong to somebody else. The `opencode` provider ID is a
+  live hosted service, the `X-Title` headers are how third-party gateways
+  recognise this client, and the OTLP service name keys existing traces.
+  Renaming them deregisters us and rebrands nothing a user sees.
+
+The `@opencode-ai/*` package namespace is likewise unchanged. It is the
+engine's own namespace, the way macOS does not rename xnu.
+
+Anything a user reads comes from `Brand`. Anything a server compares against
+comes from `Brand.upstream`. A blanket find-and-replace across the repository
+will break the second group while appearing to succeed.
 
 ## Style Guide
 
@@ -143,6 +166,17 @@ const table = sqliteTable("session", {
 - Avoid mocks as much as possible, you shouldn't be using globalThis.\* at all unless it's the only option.
 - Test actual implementation, do not duplicate logic into tests
 - Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
+
+## Building
+
+- `cd packages/opencode && bun run script/build.ts --single --skip-install --skip-embed-web-ui`
+  builds only your platform. A bare `bun run build` compiles all 12 targets and
+  is only needed to publish.
+- `bun run build:npm` assembles the installable package into `dist/arcus-code/`.
+  It does not publish; that is deliberately a separate step.
+- `install.ps1` (Windows) and `install --binary <path>` (macOS, Linux) put the
+  built binary on PATH. Both install to `~/.arcus-code/bin`, which
+  `arcus-code uninstall` expects.
 
 ## Type Checking
 
