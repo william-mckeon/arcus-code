@@ -371,7 +371,7 @@ add_to_path() {
     if grep -Fxq "$command" "$config_file"; then
         print_message info "Command already exists in $config_file, skipping write."
     elif [[ -w $config_file ]]; then
-        echo -e "\n# opencode" >> "$config_file"
+        echo -e "\n# ${BIN_NAME}" >> "$config_file"
         echo "$command" >> "$config_file"
         print_message info "${MUTED}Successfully added ${NC}${BIN_NAME} ${MUTED}to \$PATH in ${NC}$config_file"
     else
