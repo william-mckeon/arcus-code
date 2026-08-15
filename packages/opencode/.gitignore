@@ -3,6 +3,12 @@ dist
 dist-*
 gen
 app.log
+# Scratch build variants, but two of these are real scripts: build-node.ts is
+# invoked by packages/desktop predev/prebuild, and build-npm.ts assembles the
+# publishable package. The blanket rule silently kept build-node.ts out of the
+# repository entirely, which breaks the desktop build on a fresh clone.
 script/build-*.ts
+!script/build-node.ts
+!script/build-npm.ts
 temporary-*.md
 .artifacts
