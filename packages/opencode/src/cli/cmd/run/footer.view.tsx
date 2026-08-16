@@ -27,6 +27,7 @@ import { RunPromptBody, createPromptState } from "./footer.prompt"
 import { RunPermissionBody } from "./footer.permission"
 import { RunQuestionBody } from "./footer.question"
 import { footerWidthPolicy } from "./footer.width"
+import { selectSmallModel } from "./small-model"
 import {
   OPENCODE_BASE_MODE,
   formatKeyBindings,
@@ -295,6 +296,20 @@ export function RunFooterView(props: RunFooterViewProps) {
   const openModel = () => {
     setRoute({ type: "model" })
     props.onSubagentSelect?.(undefined)
+  }
+
+  // Unlike openModel this does not open a picker: the whole point is to drop to
+  // the cheapest option in one keystroke. When the current provider has nothing
+  // cheaper the panel is left open on the normal model list, so the command
+  // never looks like it silently did nothing.
+  const selectSmall = () => {
+    const target = selectSmallModel({ providers: props.providers(), current: props.currentModel() })
+    if (!target) {
+      openModel()
+      return
+    }
+    props.onModelSelect({ providerID: target.providerID, modelID: target.modelID })
+    closePanel()
   }
 
   const openSkillMenu = () => {
@@ -712,6 +727,7 @@ export function RunFooterView(props: RunFooterViewProps) {
                             variantCycle={variantCycle()}
                             onClose={closePanel}
                             onModel={openModel}
+                            onSmallModel={selectSmall}
                             onEditor={() => {
                               closePanel()
                               void composer.openEditor()

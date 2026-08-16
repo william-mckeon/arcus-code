@@ -377,6 +377,7 @@ test("direct command panel renders grouped command palette", async () => {
           variantCycle="ctrl+t"
           onClose={() => {}}
           onModel={() => {}}
+          onSmallModel={() => {}}
           onEditor={() => {}}
           onSkill={() => {}}
           onSubagent={() => {}}
@@ -518,6 +519,7 @@ test("direct command panel shows subagent entry when available", async () => {
           variantCycle="ctrl+t"
           onClose={() => {}}
           onModel={() => {}}
+          onSmallModel={() => {}}
           onEditor={() => {}}
           onSkill={() => {}}
           onSubagent={() => {}}
@@ -566,6 +568,7 @@ test("direct command panel keeps completed subagents available", async () => {
           variantCycle="ctrl+t"
           onClose={() => {}}
           onModel={() => {}}
+          onSmallModel={() => {}}
           onEditor={() => {}}
           onSkill={() => {}}
           onSubagent={() => {}}

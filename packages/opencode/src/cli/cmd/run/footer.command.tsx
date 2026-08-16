@@ -14,6 +14,7 @@ type PanelEntry = RunFooterMenuItem & {
 
 type CommandEntry =
   | (PanelEntry & { action: "model" })
+  | (PanelEntry & { action: "small-model" })
   | (PanelEntry & { action: "editor" })
   | (PanelEntry & { action: "skill" })
   | (PanelEntry & { action: "queued" })
@@ -340,6 +341,7 @@ export function RunCommandMenuBody(props: {
   variantCycle: string
   onClose: () => void
   onModel: () => void
+  onSmallModel: () => void
   onEditor: () => void
   onSkill: () => void
   onSubagent: () => void
@@ -408,6 +410,13 @@ export function RunCommandMenuBody(props: {
         category: "Agent",
         display: "Switch model",
       },
+      {
+        action: "small-model",
+        category: "Agent",
+        display: "Switch to the cheapest model",
+        footer: "/small-model",
+        keywords: "/small-model small cheap cost",
+      },
       ...(props.queued().length > 0
         ? [
             {
@@ -471,6 +480,11 @@ export function RunCommandMenuBody(props: {
   const pick = (item: CommandEntry) => {
     if (item.action === "model") {
       props.onModel()
+      return
+    }
+
+    if (item.action === "small-model") {
+      props.onSmallModel()
       return
     }
 
