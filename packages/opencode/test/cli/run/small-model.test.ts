@@ -70,7 +70,9 @@ describe("selectSmallModel", () => {
     expect(result).toBeUndefined()
   })
 
-  test("does not switch to something more expensive", () => {
+  test("still resolves when the only option costs more than the current model", () => {
+    // No cheaper-than-current gate: invoking the command is the decision, and
+    // refusing made it look like the command had been ignored.
     const result = selectSmallModel({
       providers: providers({
         big: model({ name: "big", input: 0.1, output: 0.1 }),
@@ -79,7 +81,7 @@ describe("selectSmallModel", () => {
       current,
       now: NOW,
     })
-    expect(result).toBeUndefined()
+    expect(result?.modelID).toBe("other")
   })
 
   test("prefers a small-named model over a merely cheap old flagship", () => {

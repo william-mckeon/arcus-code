@@ -3,10 +3,14 @@ import type { RunInput, RunProvider } from "./types"
 /**
  * Picks the cheapest usable model from the provider you are already on.
  *
+ * Always resolves one when the provider has any priced model to offer — it does
+ * not check whether the result beats what you are currently using. Invoking the
+ * command is the decision; refusing to act on it is not this function's call.
+ *
  * Deliberately does not cross providers. Switching provider changes
  * credentials, latency and tool-calling behaviour all at once, which is not
- * what someone asking for a cheaper model is agreeing to. If the current
- * provider has nothing cheaper, this returns undefined and the caller says so.
+ * what someone asking for a cheaper model is agreeing to. Returns undefined
+ * only when the provider genuinely has nothing to switch to.
  *
  * Scoring mirrors the v2 catalog resolver in core/src/catalog.ts: 80% price,
  * 20% recency. The v1 resolver used by title generation matches on hardcoded
@@ -81,13 +85,10 @@ export function selectSmallModel(input: {
 
   const best = pool.reduce((a, b) => (score(b) < score(a) ? b : a))
 
-  // Only worth switching if it is actually cheaper than where we are.
-  const currentModel = provider.models[input.current.modelID]
-  if (currentModel) {
-    const currentCost = currentModel.cost.input + currentModel.cost.output
-    if (currentCost > 0 && best.cost >= currentCost) return undefined
-  }
-
+  // No "is it actually cheaper than what I'm on" gate. The command is a
+  // deliberate request for the cheap model, so it always resolves one; second-
+  // guessing that made it refuse and open the full picker instead, which reads
+  // as the command being ignored.
   return { providerID: best.providerID, modelID: best.modelID, name: best.name, cost: best.cost }
 }
 
