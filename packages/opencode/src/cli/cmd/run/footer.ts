@@ -91,6 +91,8 @@ type RunFooterOptions = {
   onQuestionReject: (input: QuestionReject) => void | Promise<void>
   onCycleVariant?: () => CycleResult | void
   onModelSelect?: (model: NonNullable<RunInput["model"]>) => CycleResult | void | Promise<CycleResult | void>
+  /** Sets the small routing model. Does not touch the chat model. */
+  onSmallModelSelect?: (model: NonNullable<RunInput["model"]>) => void | Promise<void>
   onVariantSelect?: (variant: string | undefined) => CycleResult | void | Promise<CycleResult | void>
   onInterrupt?: () => void
   onBackground?: () => void
@@ -336,6 +338,7 @@ export class RunFooter implements FooterApi {
               onRequestExit: footer.setRequestExitHandler,
               onExit: () => footer.close(),
               onModelSelect: footer.handleModelSelect,
+              onSmallModelSelect: footer.handleSmallModelSelect,
               onVariantSelect: footer.handleVariantSelect,
               onRows: footer.syncRows,
               onLayout: footer.syncLayout,
@@ -814,6 +817,25 @@ export class RunFooter implements FooterApi {
 
     this.patch(patch)
     this.setNotice(result.status ?? "variant updated")
+  }
+
+  // Unlike handleModelSelect this changes no local state: the small model is
+  // not the model this footer is displaying, so there is nothing here to keep
+  // in sync. It is persisted to config and read back by the server.
+  private handleSmallModelSelect = (model: NonNullable<RunInput["model"]>): void => {
+    if (this.isClosed) {
+      return
+    }
+    void Promise.resolve()
+      .then(() => this.options.onSmallModelSelect?.(model))
+      .then(() => {
+        if (this.isClosed) return
+        this.setStatus(`small model ${model.providerID}/${model.modelID}`)
+      })
+      .catch(() => {
+        if (this.isClosed) return
+        this.setStatus("could not save small model")
+      })
   }
 
   private handleModelSelect = (model: NonNullable<RunInput["model"]>): void => {

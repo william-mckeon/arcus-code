@@ -413,9 +413,9 @@ export function RunCommandMenuBody(props: {
       {
         action: "small-model",
         category: "Agent",
-        display: "Switch to the cheapest model",
+        display: "Set small model",
         footer: "/small-model",
-        keywords: "/small-model small cheap cost",
+        keywords: "/small-model small routing title cheap cost",
       },
       ...(props.queued().length > 0
         ? [

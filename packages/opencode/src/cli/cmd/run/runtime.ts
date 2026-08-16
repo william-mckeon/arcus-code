@@ -281,6 +281,16 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
         variant: state.activeVariant,
       }
     },
+    // Persisted to global config rather than held in memory: the small model is
+    // read server-side by Provider.getSmallModel via cfg.small_model, so a
+    // session-local value would never reach the code that uses it. Writing it
+    // also makes the choice outlive the session, which is what you want from a
+    // setting you change once.
+    onSmallModelSelect: async (model) => {
+      await ctx.sdk.global.config.update({
+        config: { small_model: `${model.providerID}/${model.modelID}` },
+      })
+    },
     onModelSelect: async (model) => {
       if (state.model?.providerID === model.providerID && state.model.modelID === model.modelID) {
         return

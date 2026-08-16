@@ -183,6 +183,9 @@ export type FooterPromptRoute =
   | { type: "command" }
   | { type: "skill" }
   | { type: "model" }
+  // Same picker as "model", but the choice becomes the small routing model used
+  // for titles and background work rather than the model you are chatting with.
+  | { type: "small-model" }
   | { type: "variant" }
 
 export type FooterSubagentTab = {

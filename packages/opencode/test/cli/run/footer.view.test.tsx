@@ -210,6 +210,7 @@ async function renderFooter(
           onInputClear={() => {}}
           onExit={() => {}}
           onModelSelect={() => {}}
+        onSmallModelSelect={() => {}}
           onVariantSelect={() => {}}
           onRows={() => {}}
           onLayout={() => {}}
@@ -1002,6 +1003,7 @@ test("direct footer shows editable prompts and additional queued work while runn
           onInputClear={() => {}}
           onExit={() => {}}
           onModelSelect={() => {}}
+        onSmallModelSelect={() => {}}
           onVariantSelect={() => {}}
           onRows={() => {}}
           onLayout={() => {}}

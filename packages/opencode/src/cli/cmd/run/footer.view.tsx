@@ -27,7 +27,6 @@ import { RunPromptBody, createPromptState } from "./footer.prompt"
 import { RunPermissionBody } from "./footer.permission"
 import { RunQuestionBody } from "./footer.question"
 import { footerWidthPolicy } from "./footer.width"
-import { selectSmallModel } from "./small-model"
 import {
   OPENCODE_BASE_MODE,
   formatKeyBindings,
@@ -106,6 +105,7 @@ type RunFooterViewProps = {
   onRequestExit?: (fn: (() => boolean) | undefined) => void
   onExit: () => void
   onModelSelect: (model: NonNullable<RunInput["model"]>) => void
+  onSmallModelSelect: (model: NonNullable<RunInput["model"]>) => void
   onVariantSelect: (variant: string | undefined) => void
   onRows: (rows: number) => void
   onLayout: (input: { route: FooterPromptRoute; autocomplete: boolean; subagentRows: number }) => void
@@ -142,6 +142,7 @@ export function RunFooterView(props: RunFooterViewProps) {
   const commanding = createMemo(() => active().type === "prompt" && route().type === "command")
   const skilling = createMemo(() => active().type === "prompt" && route().type === "skill")
   const modeling = createMemo(() => active().type === "prompt" && route().type === "model")
+  const smallModeling = createMemo(() => active().type === "prompt" && route().type === "small-model")
   const varianting = createMemo(() => active().type === "prompt" && route().type === "variant")
   const panel = createMemo(
     () =>
@@ -152,6 +153,7 @@ export function RunFooterView(props: RunFooterViewProps) {
       commanding() ||
       skilling() ||
       modeling() ||
+      smallModeling() ||
       varianting(),
   )
   const selected = createMemo(() => {
@@ -298,18 +300,9 @@ export function RunFooterView(props: RunFooterViewProps) {
     props.onSubagentSelect?.(undefined)
   }
 
-  // Unlike openModel this does not open a picker: the whole point is to drop to
-  // the cheapest option in one keystroke. When the current provider has nothing
-  // cheaper the panel is left open on the normal model list, so the command
-  // never looks like it silently did nothing.
-  const selectSmall = () => {
-    const target = selectSmallModel({ providers: props.providers(), current: props.currentModel() })
-    if (!target) {
-      openModel()
-      return
-    }
-    props.onModelSelect({ providerID: target.providerID, modelID: target.modelID })
-    closePanel()
+  const openSmallModel = () => {
+    setRoute({ type: "small-model" })
+    props.onSubagentSelect?.(undefined)
   }
 
   const openSkillMenu = () => {
@@ -727,7 +720,7 @@ export function RunFooterView(props: RunFooterViewProps) {
                             variantCycle={variantCycle()}
                             onClose={closePanel}
                             onModel={openModel}
-                            onSmallModel={selectSmall}
+                            onSmallModel={openSmallModel}
                             onEditor={() => {
                               closePanel()
                               void composer.openEditor()
@@ -777,6 +770,25 @@ export function RunFooterView(props: RunFooterViewProps) {
                             onClose={closePanel}
                             onSelect={(model) => {
                               props.onModelSelect(model)
+                              closePanel()
+                            }}
+                          />
+                        </Match>
+                        <Match when={smallModeling()}>
+                          {/*
+                            Same list as the model picker, different destination:
+                            this sets the small routing model used for titles and
+                            background work, leaving the chat model alone. `current`
+                            is deliberately not passed — marking the chat model as
+                            "current" here would imply you are about to replace it.
+                          */}
+                          <RunModelSelectBody
+                            theme={theme}
+                            providers={props.providers}
+                            current={() => undefined}
+                            onClose={closePanel}
+                            onSelect={(model) => {
+                              props.onSmallModelSelect(model)
                               closePanel()
                             }}
                           />
