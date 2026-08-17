@@ -90,9 +90,23 @@ if ($entries -contains $InstallDir) {
 } else {
   [Environment]::SetEnvironmentVariable("Path", (($entries + $InstallDir) -join ';'), "User")
   Write-Host "Added to your user PATH."
+}
+
+# The stored PATH is the only thing this script can change. It cannot touch the
+# environment of the shell that launched it, nor of that shell's parent, and
+# Windows only broadcasts a change notification that long-running processes are
+# free to ignore -- VS Code and Explorer do. A terminal they spawn inherits the
+# PATH they started with, however old, so a correct stored value can still be
+# invisible right here. Check the live PATH rather than assume, because
+# "Already on PATH" is exactly the case where the gap is most confusing.
+if (($env:Path -split ';') -notcontains $InstallDir) {
   Write-Host ""
-  Write-Host "Open a new terminal, or run this to use it in the current one:" -ForegroundColor Yellow
-  Write-Host "  `$env:Path += ';$InstallDir'"
+  Write-Host "This terminal cannot see $InstallDir yet." -ForegroundColor Yellow
+  Write-Host "Restart your terminal -- and VS Code too, if this is its terminal, since"
+  Write-Host "terminals inherit its PATH. To use it here without restarting, run:"
+  Write-Host '  $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")'
+  Write-Host ""
+  exit 0
 }
 
 Write-Host ""
