@@ -374,6 +374,18 @@ You can configure the providers and models you want to use in your OpenCode conf
 
 The `small_model` option configures a separate model for lightweight tasks like title generation. By default, OpenCode tries to use a cheaper model if one is available from your provider, otherwise it falls back to your main model.
 
+If the small model supports reasoning levels, `small_model_variant` picks which one it runs at:
+
+```json title="opencode.json"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "small_model_variant": "low"
+}
+```
+
+When `small_model_variant` is unset, the small model follows whatever variant the main model is currently using. If it does not define a variant by that name, it runs with no reasoning options.
+
 Provider options can include `timeout`, `chunkTimeout`, and `setCacheKey`:
 
 ```json title="opencode.json"

@@ -27,6 +27,8 @@ type PrepareInput = {
   readonly system: string[]
   readonly messages: ModelMessage[]
   readonly small?: boolean
+  // config.small_model_variant. Only consulted when small is true.
+  readonly smallVariant?: string
   readonly tools: Record<string, Tool>
   readonly provider: Provider.Info
   readonly auth: Auth.Info | undefined
@@ -77,12 +79,19 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     system.push(header, rest.join("\n"))
   }
 
-  const variant =
-    !input.small && input.model.variants && input.user.model.variant
-      ? input.model.variants[input.user.model.variant]
-      : {}
+  // Which variant (reasoning level) this call runs at. The main model takes it
+  // from the user message. The small model takes small_model_variant when set,
+  // and otherwise follows the main model. It inherits the variant NAME rather
+  // than a resolved options object, because variants are per-model: the small
+  // model may not define every level the main one does, and a name it does not
+  // define resolves to no variant options rather than to the wrong ones.
+  // || rather than ?? on purpose: clearing small_model_variant through the
+  // config API writes "" (a JSONC patch sets keys, it cannot remove them), and
+  // an empty value means "unset" -- fall through to the main model's variant.
+  const variantName = input.small ? input.smallVariant || input.user.model.variant : input.user.model.variant
+  const variant = variantName && variantName !== "default" ? (input.model.variants?.[variantName] ?? {}) : {}
   const base = input.small
-    ? ProviderTransform.smallOptions(input.model)
+    ? ProviderTransform.smallOptions(input.model, variant)
     : ProviderTransform.options({
         model: input.model,
         sessionID: input.sessionID,

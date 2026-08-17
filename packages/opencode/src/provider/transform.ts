@@ -1326,8 +1326,15 @@ export function options(input: {
   return result
 }
 
-export function smallOptions(model: Provider.Model) {
-  const small = Object.values(model.variants ?? {})[0] ?? {}
+// variant is the already-resolved variant options for this call, chosen by the
+// caller from small_model_variant or inherited from the main model. It is
+// passed in rather than derived here because picking Object.values(variants)[0]
+// pins the small model to whichever variant happens to be declared first, which
+// for a hand-written config is arbitrary -- a config listing "max" first ran
+// every title generation at max reasoning effort. Callers that have no variant
+// to offer pass {} and get the provider's own no-reasoning defaults below.
+export function smallOptions(model: Provider.Model, variant?: Record<string, any>) {
+  const small = variant ?? Object.values(model.variants ?? {})[0] ?? {}
   if (
     model.providerID === "openai" ||
     model.api.npm === "@ai-sdk/openai" ||

@@ -12,10 +12,10 @@ import { useSync } from "../context/sync"
 export function DialogModel(props: {
   providerID?: string
   // Set when the dialog picks a model for something other than the model you
-  // are chatting with. onPick owns the choice, so none of the chat-model side
-  // effects run: the recent list is left alone and there is no variant
-  // follow-up. title and current let the caller label the dialog and mark which
-  // entry is already in use.
+  // are chatting with. onPick owns the choice and the dialog lifecycle, so none
+  // of the chat-model side effects run: the recent list is left alone, and any
+  // variant follow-up is the caller's to open. title and current let the caller
+  // label the dialog and mark which entry is already in use.
   title?: string
   current?: { providerID: string; modelID: string }
   onPick?: (model: { providerID: string; modelID: string }) => void
@@ -151,8 +151,10 @@ export function DialogModel(props: {
 
   function onSelect(providerID: string, modelID: string) {
     if (props.onPick) {
+      // onPick owns the dialog from here, exactly as the chat-model path below
+      // owns it: it either clears or chains to a variant step. Clearing here
+      // would close the dialog before a follow-up could replace it.
       props.onPick({ providerID, modelID })
-      dialog.clear()
       return
     }
     local.model.set({ providerID, modelID }, { recent: true })

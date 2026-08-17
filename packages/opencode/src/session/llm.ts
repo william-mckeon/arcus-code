@@ -110,6 +110,7 @@ const live: Layer.Layer<
         plugin,
         flags,
         isWorkflow,
+        smallVariant: cfg.small_model_variant,
       })
 
       // Wire up toolExecutor for DWS workflow models so that tool calls

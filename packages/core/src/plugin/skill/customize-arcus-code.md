@@ -62,6 +62,7 @@ Every field is optional.
   "username": "string",
   "model": "provider/model-id",
   "small_model": "provider/model-id",
+  "small_model_variant": "low",
   "default_agent": "agent-name",
   "shell": "/bin/zsh",
   "logLevel": "DEBUG" | "INFO" | "WARN" | "ERROR",

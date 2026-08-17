@@ -21273,6 +21273,9 @@
           "small_model": {
             "type": "string"
           },
+          "small_model_variant": {
+            "type": "string"
+          },
           "default_agent": {
             "type": "string"
           },
