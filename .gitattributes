@@ -1,2 +1,17 @@
 packages/core/migration/**/snapshot.json linguist-generated
 packages/core/src/database/migration.gen.ts linguist-generated
+
+# Files that tooling rewrites with LF, pinned so git stops trying to store them
+# as CRLF. On a core.autocrlf=true checkout these otherwise sit permanently
+# "modified" with an empty diff: the content matches the index byte for byte,
+# but the working-tree form is not the one git would check out, so every status
+# reports a change that no commit can ever resolve.
+#
+# bun install, invoked by packages/opencode/script/build.ts, rewrites this on
+# every build.
+packages/opencode/package.json text eol=lf
+
+# packages/sdk/js/script/build.ts regenerates these from openapi.json. Without
+# the pin, regenerating leaves ~39 files dirty with no content change, which
+# buries the one entry that did change.
+packages/sdk/js/src/** text eol=lf
