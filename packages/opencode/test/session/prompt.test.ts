@@ -2440,3 +2440,108 @@ noLLMServer.instance(
     }),
   30_000,
 )
+
+
+
+// Variant resolution for the small model. Every config below declares "max"
+// first, because that is what the old positional pick -- Object.values(
+// variants)[0] -- selected regardless of what was asked for.
+function variantCfg(input: { smallVariant?: string; smallVariants?: Record<string, unknown> }) {
+  const model = (id: string, variants: Record<string, unknown>) => ({
+    id,
+    name: id,
+    attachment: false,
+    reasoning: true,
+    temperature: false,
+    tool_call: true,
+    release_date: "2025-01-01",
+    limit: { context: 100000, output: 10000 },
+    cost: { input: 0, output: 0 },
+    options: {},
+    variants,
+  })
+  const full = { max: { reasoningEffort: "max" }, low: { reasoningEffort: "low" } }
+  return (url: string) => ({
+    provider: {
+      test: {
+        name: "Test",
+        id: "test",
+        env: [],
+        npm: "@ai-sdk/openai-compatible",
+        models: {
+          "test-model": model("test-model", full),
+          "small-model": model("small-model", input.smallVariants ?? full),
+        },
+        options: { apiKey: "test-key", baseURL: url },
+      },
+    },
+    small_model: "test/small-model",
+    ...(input.smallVariant === undefined ? {} : { small_model_variant: input.smallVariant }),
+  })
+}
+
+// Runs one full turn and reports the reasoning_effort each model was actually
+// sent. Title generation is what routes to the small model, so the session is
+// created without a title -- ensureTitle bails on anything but a default one.
+const reasoningByModel = Effect.fn("test.reasoningByModel")(function* (input: {
+  cfg: (url: string) => any
+  variant?: string
+}) {
+  const { llm } = yield* useServerConfig(input.cfg)
+  const prompt = yield* SessionPrompt.Service
+  const sessions = yield* Session.Service
+  const chat = yield* sessions.create({ permission: [{ permission: "*", pattern: "*", action: "allow" }] })
+  yield* prompt.prompt({
+    sessionID: chat.id,
+    agent: "build",
+    noReply: true,
+    variant: input.variant,
+    parts: [{ type: "text", text: "hello" }],
+  })
+  yield* llm.text("turn")
+  yield* llm.text("title")
+  yield* prompt.loop({ sessionID: chat.id })
+  yield* awaitWithTimeout(llm.wait(2), "timed out waiting for the small model request", "10 seconds")
+
+  const out: Record<string, unknown> = {}
+  for (const hit of yield* llm.hits) {
+    const body = hit.body as Record<string, unknown>
+    out[String(body.model)] = body.reasoning_effort
+  }
+  return out
+})
+
+it.instance("small model uses small_model_variant rather than the first declared variant", () =>
+  Effect.gen(function* () {
+    const seen = yield* reasoningByModel({ cfg: variantCfg({ smallVariant: "low" }) })
+    expect(seen["small-model"]).toBe("low")
+  }),
+)
+
+it.instance("small model inherits the main model's variant when small_model_variant is unset", () =>
+  Effect.gen(function* () {
+    const seen = yield* reasoningByModel({ cfg: variantCfg({}), variant: "max" })
+    expect(seen["small-model"]).toBe("max")
+    expect(seen["test-model"]).toBe("max")
+  }),
+)
+
+// Picking "Default" in the TUI writes "" rather than removing the key, because
+// a JSONC config patch can set a key but not delete one.
+it.instance("empty small_model_variant counts as unset, so the small model still inherits", () =>
+  Effect.gen(function* () {
+    const seen = yield* reasoningByModel({ cfg: variantCfg({ smallVariant: "" }), variant: "max" })
+    expect(seen["small-model"]).toBe("max")
+  }),
+)
+
+it.instance("small model sends no reasoning options for a variant it does not define", () =>
+  Effect.gen(function* () {
+    const seen = yield* reasoningByModel({
+      cfg: variantCfg({ smallVariants: { low: { reasoningEffort: "low" } } }),
+      variant: "max",
+    })
+    expect(seen["small-model"]).toBeUndefined()
+    expect(seen["test-model"]).toBe("max")
+  }),
+)
