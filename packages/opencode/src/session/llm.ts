@@ -83,15 +83,6 @@ const live: Layer.Layer<
     const flags = yield* RuntimeFlags.Service
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
-      yield* Effect.logInfo("stream", {
-        providerID: input.model.providerID,
-        modelID: input.model.id,
-        "session.id": input.sessionID,
-        small: (input.small ?? false).toString(),
-        agent: input.agent.name,
-        mode: input.agent.mode,
-      })
-
       const [language, cfg, item, info] = yield* Effect.all(
         [
           provider.getLanguage(input.model),
@@ -111,6 +102,22 @@ const live: Layer.Layer<
         flags,
         isWorkflow,
         smallVariant: cfg.small_model_variant,
+      })
+
+      // Logged after prepare rather than before it, so the line can name the
+      // variant the request actually carries. That is the field that decides
+      // what a call costs, and it is only known once the request is built --
+      // it comes from small_model_variant or the main model, then has to exist
+      // on this model to apply. Logging first would also announce calls that
+      // prepare then failed to build.
+      yield* Effect.logInfo("stream", {
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+        "session.id": input.sessionID,
+        small: (input.small ?? false).toString(),
+        agent: input.agent.name,
+        mode: input.agent.mode,
+        variant: prepared.variantName ?? "none",
       })
 
       // Wire up toolExecutor for DWS workflow models so that tool calls

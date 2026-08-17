@@ -50,6 +50,11 @@ export type Prepared = {
   }
   readonly messageTransformOptions: Record<string, any>
   readonly headers: Record<string, string>
+  // The variant this request resolved to, for logging. Undefined means the call
+  // carries no reasoning options at all, which is not the same as a variant
+  // named "default" -- reported as "none" rather than silently omitted, since
+  // the distinction is what makes a cost question answerable from the log.
+  readonly variantName: string | undefined
 }
 
 const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
@@ -88,8 +93,13 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   // || rather than ?? on purpose: clearing small_model_variant through the
   // config API writes "" (a JSONC patch sets keys, it cannot remove them), and
   // an empty value means "unset" -- fall through to the main model's variant.
-  const variantName = input.small ? input.smallVariant || input.user.model.variant : input.user.model.variant
-  const variant = variantName && variantName !== "default" ? (input.model.variants?.[variantName] ?? {}) : {}
+  const requested = input.small ? input.smallVariant || input.user.model.variant : input.user.model.variant
+  // Reported separately from what was asked for: a name this model does not
+  // define contributes no options, and logging the requested name in that case
+  // would claim a reasoning level the request never carried.
+  const resolved = requested && requested !== "default" ? input.model.variants?.[requested] : undefined
+  const variant = resolved ?? {}
+  const variantName = resolved ? requested : undefined
   const base = input.small
     ? ProviderTransform.smallOptions(input.model, variant)
     : ProviderTransform.options({
@@ -192,6 +202,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     messages,
     tools: Object.fromEntries(Object.entries(tools).toSorted(([a], [b]) => a.localeCompare(b))),
     params,
+    variantName,
     messageTransformOptions: options,
     headers: {
       ...(input.model.providerID.startsWith("opencode")
