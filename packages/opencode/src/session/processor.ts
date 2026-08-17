@@ -440,6 +440,21 @@ const layer = Layer.effect(
               usage: value.usage ?? new Usage({}),
               metadata: value.providerMetadata,
             })
+            // Pairs with the "stream" line logged before the call: that one says
+            // what was sent, this one says what it cost. cache.read is the field
+            // worth watching -- it stays 0 for a provider that is not caching,
+            // which is otherwise indistinguishable from a provider that is.
+            yield* Effect.logInfo("usage", {
+              providerID: ctx.model.providerID,
+              modelID: ctx.model.id,
+              "session.id": ctx.assistantMessage.sessionID,
+              input: usage.tokens.input,
+              output: usage.tokens.output,
+              reasoning: usage.tokens.reasoning,
+              "cache.read": usage.tokens.cache.read,
+              "cache.write": usage.tokens.cache.write,
+              cost: usage.cost.toFixed(6),
+            })
             ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens

@@ -2113,3 +2113,60 @@ describe("session.llm.stream", () => {
     },
   )
 })
+
+// Cached reads are billed at their own rate, and a model entry that omits
+// cache_read silently prices them at zero -- models-dev.ts:18 maps a missing
+// cache_read to `read: 0`. That makes a cache hit look free instead of cheap,
+// which is exactly the signal needed to tell a working cache from a provider
+// that is not caching at all. Figures are Together's real Inkling-Small
+// numbers: 0.5 in / 1.2 out / 0.1 cached read, per million tokens.
+describe("session.getUsage cached-read pricing", () => {
+  const model = (cache: { read: number; write: number }) =>
+    ({
+      id: "thinkingmachines/Inkling-Small",
+      providerID: "togetherai",
+      name: "Inkling Small",
+      limit: { context: 524_288, output: 131_072 },
+      cost: { input: 0.5, output: 1.2, cache },
+      capabilities: {
+        toolcall: true,
+        attachment: false,
+        reasoning: true,
+        temperature: true,
+        input: { text: true, image: false, audio: false, video: false },
+        output: { text: true, image: false, audio: false, video: false },
+      },
+      api: { npm: "@ai-sdk/togetherai" },
+      options: {},
+    }) as never
+
+  // 1M total input, of which 800k came from cache.
+  const usage = {
+    inputTokens: 1_000_000,
+    outputTokens: 0,
+    totalTokens: 1_000_000,
+    cacheReadInputTokens: 800_000,
+  } as never
+
+  test("prices cached reads at cache_read, not at the full input rate", () => {
+    const result = SessionNs.getUsage({ model: model({ read: 0.1, write: 0 }), usage })
+    expect(result.tokens.input).toBe(200_000)
+    expect(result.tokens.cache.read).toBe(800_000)
+    // 200k uncached at 0.5/M = 0.10, plus 800k cached at 0.1/M = 0.08.
+    expect(result.cost).toBeCloseTo(0.18, 6)
+  })
+
+  test("omitting cache_read makes a cache hit look free rather than cheap", () => {
+    const result = SessionNs.getUsage({ model: model({ read: 0, write: 0 }), usage })
+    expect(result.tokens.cache.read).toBe(800_000)
+    // Same traffic, but the 800k cached tokens contribute nothing at all.
+    expect(result.cost).toBeCloseTo(0.1, 6)
+  })
+
+  test("a full cache miss costs the uncached rate for everything", () => {
+    const miss = { inputTokens: 1_000_000, outputTokens: 0, totalTokens: 1_000_000 } as never
+    const result = SessionNs.getUsage({ model: model({ read: 0.1, write: 0 }), usage: miss })
+    expect(result.tokens.cache.read).toBe(0)
+    expect(result.cost).toBeCloseTo(0.5, 6)
+  })
+})
