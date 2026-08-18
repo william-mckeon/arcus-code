@@ -2163,6 +2163,26 @@ describe("session.getUsage cached-read pricing", () => {
     expect(result.cost).toBeCloseTo(0.1, 6)
   })
 
+  // Same trap as cache_read, on the field that bit the main model: models.dev
+  // publishes cache_read for thinkingmachines/Inkling:peft:262144 but no
+  // cache_write, so tens of thousands of written tokens per session cost
+  // nothing at all in the reported figure.
+  test("prices cached writes at cache_write when the model publishes one", () => {
+    const write = { inputTokens: 1_000_000, outputTokens: 0, totalTokens: 1_000_000, cacheWriteInputTokens: 800_000 }
+    const result = SessionNs.getUsage({ model: model({ read: 0.1, write: 0.6 }), usage: write as never })
+    expect(result.tokens.cache.write).toBe(800_000)
+    // 200k uncached at 0.5/M = 0.10, plus 800k written at 0.6/M = 0.48.
+    expect(result.cost).toBeCloseTo(0.58, 6)
+  })
+
+  test("omitting cache_write makes written tokens cost nothing", () => {
+    const write = { inputTokens: 1_000_000, outputTokens: 0, totalTokens: 1_000_000, cacheWriteInputTokens: 800_000 }
+    const result = SessionNs.getUsage({ model: model({ read: 0.1, write: 0 }), usage: write as never })
+    expect(result.tokens.cache.write).toBe(800_000)
+    // The 800k written tokens vanish from the bill, understating it 5.8x.
+    expect(result.cost).toBeCloseTo(0.1, 6)
+  })
+
   test("a full cache miss costs the uncached rate for everything", () => {
     const miss = { inputTokens: 1_000_000, outputTokens: 0, totalTokens: 1_000_000 } as never
     const result = SessionNs.getUsage({ model: model({ read: 0.1, write: 0 }), usage: miss })

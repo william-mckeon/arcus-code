@@ -29,6 +29,35 @@ import { Usage, type LLMEvent } from "@opencode-ai/llm"
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
 
+// A model entry that omits cache_write prices cached writes at zero, because
+// models-dev.ts maps a missing figure to 0 and nothing downstream can tell that
+// apart from a provider who genuinely charges nothing. The two are very
+// different: a session can write tens of thousands of cache tokens, so if the
+// price was merely unpublished the reported cost is understated rather than
+// cheap, and every cost decision made from it is wrong in the same direction.
+//
+// Warn once per model rather than per step: this is a property of the catalog
+// entry, so repeating it every call would be noise. It cannot prove which case
+// applies, so it reports the observable fact and leaves the judgement.
+const unpricedCacheWriteWarned = new Set<string>()
+
+export const warnUnpricedCacheWrite = Effect.fn("SessionProcessor.warnUnpricedCacheWrite")(function* (
+  model: Provider.Model,
+  cacheWriteTokens: number,
+) {
+  if (cacheWriteTokens <= 0) return
+  if (model.cost?.cache?.write) return
+  const key = `${model.providerID}/${model.id}`
+  if (unpricedCacheWriteWarned.has(key)) return
+  unpricedCacheWriteWarned.add(key)
+  yield* Effect.logWarning("cache write tokens are being priced at zero", {
+    providerID: model.providerID,
+    modelID: model.id,
+    "cache.write": cacheWriteTokens,
+    detail: "the model has no cache_write price, so reported cost excludes cache writes entirely",
+  })
+})
+
 export interface Handle {
   readonly message: SessionV1.Assistant
   readonly updateToolCall: (
@@ -455,6 +484,7 @@ const layer = Layer.effect(
               "cache.write": usage.tokens.cache.write,
               cost: usage.cost.toFixed(6),
             })
+            yield* warnUnpricedCacheWrite(ctx.model, usage.tokens.cache.write)
             ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
