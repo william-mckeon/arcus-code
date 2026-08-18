@@ -55,7 +55,7 @@ import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
-import { LLMEvent } from "@opencode-ai/llm"
+import { LLMEvent, Usage } from "@opencode-ai/llm"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -235,6 +235,46 @@ const layer = Layer.effect(
           messages: [{ role: "user", content: "Generate a title for this conversation:\n" }, ...msgs],
         })
         .pipe(
+          // Title generation does not run through SessionProcessor, so the
+          // usage line logged there never covers it. Without this tap the small
+          // model -- the whole point of routing cheap work away from the main
+          // one -- is the one call whose cost never appears in the log.
+          Stream.tap((event) =>
+            // Both step-finish and finish carry an optional usage payload, and
+            // which one is populated depends on the provider. Take whichever
+            // actually has it -- tapping step-finish alone produced a usage line
+            // of all zeros, which is worse than none at all.
+            //
+            // Some models report nothing here: togetherai/Inkling-Small sends
+            // step-finish and finish with no usage on either, while GLM-5.2 on
+            // the same provider does report it. So the small model may still
+            // have no usage line, and that is the provider's silence rather
+            // than a missing tap. Logging the zeros anyway would assert the
+            // call was free, which is the same mistake as an unpriced cache
+            // write.
+            (LLMEvent.is.stepFinish(event) || LLMEvent.is.finish(event)) && event.usage
+              ? Effect.gen(function* () {
+                  const usage = Session.getUsage({
+                    model: mdl,
+                    usage: event.usage ?? new Usage({}),
+                    metadata: "providerMetadata" in event ? event.providerMetadata : undefined,
+                  })
+                  yield* Effect.logInfo("usage", {
+                    providerID: mdl.providerID,
+                    modelID: mdl.id,
+                    "session.id": input.session.id,
+                    small: "true",
+                    input: usage.tokens.input,
+                    output: usage.tokens.output,
+                    reasoning: usage.tokens.reasoning,
+                    "cache.read": usage.tokens.cache.read,
+                    "cache.write": usage.tokens.cache.write,
+                    cost: usage.cost.toFixed(6),
+                  })
+                  yield* SessionProcessor.warnUnpricedCacheWrite(mdl, usage.tokens.cache.write)
+                })
+              : Effect.void,
+          ),
           Stream.filter(LLMEvent.is.textDelta),
           Stream.map((e) => e.text),
           Stream.mkString,
