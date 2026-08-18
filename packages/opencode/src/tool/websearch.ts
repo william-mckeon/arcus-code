@@ -37,6 +37,10 @@ export function webSearchKeysFromEnv(): WebSearchKeys {
   }
 }
 
+// Exa last: it is the only provider that answers unauthenticated, so a key set
+// for it says least about what the operator wants.
+const WEBSEARCH_KEY_PRECEDENCE = ["tavily", "parallel", "exa"] as const
+
 const DEFAULT_PROVIDER: WebSearchProvider = "exa"
 
 // Selection used to be `checksum(sessionID) % 2`, an A/B split that handed each
@@ -46,9 +50,16 @@ const DEFAULT_PROVIDER: WebSearchProvider = "exa"
 //
 // A configured key is treated as intent: setting TAVILY_API_KEY and nothing else
 // is how most people will expect to select Tavily, without also having to name
-// it. Only an unambiguous single key counts; with several configured the
-// explicit override or flag decides, and failing that the default holds. The
-// result no longer depends on the session, so it is stable across a project.
+// it. The result no longer depends on the session, so it is stable across a
+// project.
+//
+// Several keys resolve by the precedence below rather than falling back to the
+// default. An earlier version deferred to the default whenever the choice was
+// ambiguous, which read as cautious and behaved badly: a valid Tavily key
+// alongside a stale Exa one selected Exa and failed, having ignored the only
+// credential the operator had actually got right. Exa is last precisely because
+// it is the one that works unauthenticated, so a key set for it is the weakest
+// evidence of intent; Tavily and Parallel do nothing without one.
 export function selectWebSearchProvider(
   _sessionID: string,
   flags: WebSearchFlags = { exa: false, parallel: false, tavily: false },
@@ -63,10 +74,16 @@ export function selectWebSearchProvider(
   if (flags.parallel) return "parallel"
   if (flags.exa) return "exa"
 
-  const keyed = (["tavily", "parallel", "exa"] as const).filter((provider) => keys[provider])
-  if (keyed.length === 1) return keyed[0]
+  const keyed = WEBSEARCH_KEY_PRECEDENCE.filter((provider) => keys[provider])
+  if (keyed.length > 0) return keyed[0]
 
   return DEFAULT_PROVIDER
+}
+
+// Exported so callers can report which credentials were in play when several
+// are set, rather than leaving the choice unexplained.
+export function ambiguousWebSearchKeys(keys: WebSearchKeys = webSearchKeysFromEnv()) {
+  return WEBSEARCH_KEY_PRECEDENCE.filter((provider) => keys[provider])
 }
 
 export function webSearchProviderLabel(provider: unknown) {

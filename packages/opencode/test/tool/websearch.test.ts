@@ -59,8 +59,17 @@ describe("websearch provider", () => {
     expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { parallel: "key" })).toBe("parallel")
   })
 
-  test("ambiguous keys fall back to the default rather than guessing", () => {
-    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { tavily: "key", exa: "key" })).toBe("exa")
+  // Regression: deferring to the default whenever several keys were set meant a
+  // valid Tavily key alongside a stale Exa one selected Exa and failed the
+  // search, having ignored the only credential that worked.
+  test("several keys resolve by precedence, not by falling back to the default", () => {
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { tavily: "key", exa: "key" })).toBe("tavily")
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { parallel: "key", exa: "key" })).toBe("parallel")
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { tavily: "key", parallel: "key", exa: "key" })).toBe("tavily")
+  })
+
+  test("falls back to the default only when no key is configured at all", () => {
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, NO_KEYS)).toBe("exa")
   })
 
   test("an explicit flag beats a configured key", () => {

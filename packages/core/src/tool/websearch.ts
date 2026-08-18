@@ -94,9 +94,12 @@ export const configNode = makeLocationNode({ service: ConfigService, layer: defa
 // Mirrors selectWebSearchProvider in packages/opencode/src/tool/websearch.ts.
 // The session hash that used to split traffic between two providers is gone: it
 // does not extend to a third, and a search engine chosen by a hash of the
-// session id is not something a user can reason about. A lone configured key
-// now selects its provider, since that is the least surprising reading of
-// setting one.
+// session id is not something a user can reason about. A configured key now
+// selects its provider, since that is the least surprising reading of setting
+// one, and several keys resolve by precedence rather than deferring to the
+// default -- deferring meant a valid Tavily key alongside a stale Exa one
+// selected Exa and failed. Exa sits last because it is the only provider that
+// answers unauthenticated, so a key set for it is the weakest signal.
 export function selectProvider(
   _sessionID: string,
   flags: Pick<Config, "enableExa" | "enableParallel" | "enableTavily"> = {
@@ -119,7 +122,7 @@ export function selectProvider(
       ["exa", keys.exaApiKey],
     ] as const
   ).filter(([, key]) => key)
-  if (keyed.length === 1) return keyed[0][0]
+  if (keyed.length > 0) return keyed[0][0]
 
   return "exa"
 }
