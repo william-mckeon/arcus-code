@@ -1,14 +1,19 @@
 import { Duration, Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 
-export const EXA_URL = process.env.EXA_API_KEY
-  ? `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(process.env.EXA_API_KEY)}`
-  : "https://mcp.exa.ai/mcp"
+export const EXA_BASE_URL = "https://mcp.exa.ai/mcp"
 export const PARALLEL_URL = "https://search.parallel.ai/mcp"
 
+// Built from a function rather than a module constant read at import time, so a
+// key resolved from the auth store -- not just the environment -- reaches the
+// URL. Exa carries its credential in the query string.
+export function exaUrl(apiKey: string | undefined = process.env.EXA_API_KEY) {
+  if (!apiKey) return EXA_BASE_URL
+  return `${EXA_BASE_URL}?exaApiKey=${encodeURIComponent(apiKey)}`
+}
+
 // Tavily carries its key in the query string like Exa, not in a header like
-// Parallel. Built from a function rather than a module constant so a key set
-// through config -- not just the environment -- still reaches the URL.
+// Parallel.
 export const TAVILY_BASE_URL = "https://mcp.tavily.com/mcp/"
 export function tavilyUrl(apiKey: string | undefined = process.env.TAVILY_API_KEY) {
   if (!apiKey) return TAVILY_BASE_URL

@@ -237,6 +237,16 @@ export function resolvePluginProviders(input: {
   return result
 }
 
+// The auth store is not model-specific -- an entry is { type: "api", key } --
+// but this picker is built from the models.dev catalog, so the search backends
+// never appeared and their keys had nowhere to live except the environment.
+// Listed here so one credential command covers everything the tool needs.
+const WEB_SEARCH_PROVIDERS = [
+  { label: "Tavily", value: "tavily", hint: "web search" },
+  { label: "Exa", value: "exa", hint: "web search" },
+  { label: "Parallel", value: "parallel", hint: "web search" },
+]
+
 export const ProvidersCommand = cmd({
   command: "providers",
   aliases: ["auth"],
@@ -407,6 +417,7 @@ export const ProvidersLoginCommand = effectCmd({
         value: x.id,
         hint: "plugin",
       })),
+      ...WEB_SEARCH_PROVIDERS,
     ]
 
     let provider: string
@@ -466,6 +477,17 @@ export const ProvidersLoginCommand = effectCmd({
 
     if (provider === "opencode") {
       yield* Prompt.log.info("Create an api key at https://opencode.ai/auth")
+    }
+
+    if (WEB_SEARCH_PROVIDERS.some((x) => x.value === provider)) {
+      yield* Prompt.log.info(
+        [
+          "This key is used by the websearch tool, not for chat.",
+          "  Tavily:   https://app.tavily.com",
+          "  Exa:      https://dashboard.exa.ai  (also works without a key)",
+          "  Parallel: https://platform.parallel.ai",
+        ].join("\n"),
+      )
     }
 
     if (provider === "vercel") {

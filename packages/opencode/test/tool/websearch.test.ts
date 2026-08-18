@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { parseResponse } from "../../src/tool/mcp-websearch"
-import { selectWebSearchProvider, webSearchModelName, webSearchProviderLabel } from "../../src/tool/websearch"
+import {
+  mergeWebSearchKeys,
+  selectWebSearchProvider,
+  webSearchModelName,
+  webSearchProviderLabel,
+} from "../../src/tool/websearch"
 
 import { webSearchEnabled } from "../../src/tool/registry"
 import { it } from "../lib/effect"
@@ -88,6 +93,30 @@ describe("websearch provider", () => {
     // The gate used to be opencode-only, which hid the tool from every other
     // provider even when the operator had credentials for a search backend.
     expect(webSearchEnabled(ProviderV2.ID.openai, NO_FLAGS, { tavily: "key" })).toBe(true)
+  })
+
+  // Search keys live in the same auth.json as the model providers, so a key set
+  // once through `providers login` works in every shell and directory. An
+  // exported variable still wins, because that is how CI and one-off runs
+  // expect to override a stored setting.
+  test("a stored credential is used when nothing is exported", () => {
+    expect(mergeWebSearchKeys({ tavily: "stored" }, {})).toEqual({
+      tavily: "stored",
+      parallel: undefined,
+      exa: undefined,
+    })
+  })
+
+  test("an exported key overrides the stored one", () => {
+    expect(mergeWebSearchKeys({ tavily: "stored" }, { tavily: "exported" }).tavily).toBe("exported")
+  })
+
+  test("stored and exported keys for different providers both survive", () => {
+    const merged = mergeWebSearchKeys({ tavily: "stored" }, { exa: "exported" })
+    expect(merged.tavily).toBe("stored")
+    expect(merged.exa).toBe("exported")
+    // Precedence then decides, and a stored Tavily key still beats an Exa one.
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, merged)).toBe("tavily")
   })
 
   test("uses branded labels", () => {

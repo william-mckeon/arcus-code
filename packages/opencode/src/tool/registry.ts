@@ -25,7 +25,7 @@ import z from "zod"
 import { Plugin } from "../plugin"
 import { Provider } from "@/provider/provider"
 
-import { WebSearchTool, webSearchKeysFromEnv, type WebSearchKeys } from "./websearch"
+import { WebSearchTool, webSearchKeysFromEnv, resolveWebSearchKeys, type WebSearchKeys } from "./websearch"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
@@ -47,6 +47,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill"
 import { Permission } from "@/permission"
+import { Auth } from "@/auth"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -103,6 +104,7 @@ const layer = Layer.effect(
     const truncate = yield* Truncate.Service
     const flags = yield* RuntimeFlags.Service
     const mcp = yield* MCP.Service
+    const auth = yield* Auth.Service
 
     const invalid = yield* InvalidTool
     const task = yield* TaskTool
@@ -295,13 +297,16 @@ const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
+      // Resolved once per call rather than inside the filter: the filter is a
+      // plain predicate, and the lookup reads the auth store.
+      const websearchKeys = yield* resolveWebSearchKeys(auth)
       const filtered = (yield* all()).filter((tool) => {
         if (tool.id === WebSearchTool.id) {
-          return webSearchEnabled(input.providerID, {
-            exa: flags.enableExa,
-            parallel: flags.enableParallel,
-            tavily: flags.enableTavily,
-          })
+          return webSearchEnabled(
+            input.providerID,
+            { exa: flags.enableExa, parallel: flags.enableParallel, tavily: flags.enableTavily },
+            websearchKeys,
+          )
         }
 
         const usePatch =
@@ -459,6 +464,7 @@ export const node = LayerNode.make({
     MCP.node,
     Database.node,
     Ripgrep.node,
+    Auth.node,
   ],
 })
 

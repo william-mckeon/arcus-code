@@ -259,11 +259,21 @@ Search the web for information.
 :::note
 This tool is available when using the OpenCode provider, when a search provider API key is configured, or when a provider flag is set. Configuring a key is the usual route — the tool then works with any model provider.
 
+The usual way is to store one alongside your model credentials:
+
+```bash
+arcus-code providers login    # pick Tavily, Exa or Parallel, then paste the key
+```
+
+That writes to the same `auth.json` your model keys use, so it applies in every shell and directory. `arcus-code providers list` shows it, and `providers logout` removes it.
+
+Environment variables still work and take precedence over a stored key, which is what CI and one-off runs want:
+
 ```bash
 TAVILY_API_KEY=... arcus-code
 ```
 
-Supported keys are `TAVILY_API_KEY`, `EXA_API_KEY` and `PARALLEL_API_KEY`. Setting exactly one selects that provider. If several are set, choose between them explicitly:
+Supported variables are `TAVILY_API_KEY`, `EXA_API_KEY` and `PARALLEL_API_KEY`. Configuring exactly one selects that provider. If several are configured, precedence is Tavily, then Parallel, then Exa — Exa last because it is the only one that answers without a key. To choose explicitly:
 
 ```bash
 OPENCODE_WEBSEARCH_PROVIDER=tavily arcus-code

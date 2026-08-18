@@ -5,6 +5,7 @@ import * as McpWebSearch from "./mcp-websearch"
 import DESCRIPTION from "./websearch.txt"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { Auth } from "@/auth"
 
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "Websearch query" }),
@@ -36,6 +37,37 @@ export function webSearchKeysFromEnv(): WebSearchKeys {
     tavily: process.env.TAVILY_API_KEY,
   }
 }
+
+// Search credentials live in the same auth.json the model providers use, under
+// their own provider id, so `providers login` stores one the same way it stores
+// any other. Nothing about that store is model-specific: an entry is
+// { type: "api", key }, which is exactly what a search key is.
+// Takes the already-resolved Auth service rather than yielding it. Yielding it
+// here would leave Auth in the R channel of whatever calls this, and a tool's
+// execute must carry no outstanding requirements.
+export const webSearchKeysFromAuth = Effect.fn("WebSearch.keysFromAuth")(function* (auth: Auth.Interface) {
+  const keys: { -readonly [K in keyof WebSearchKeys]: WebSearchKeys[K] } = {}
+  for (const provider of WEBSEARCH_KEY_PRECEDENCE) {
+    const stored = yield* auth.get(provider).pipe(Effect.orElseSucceed(() => undefined))
+    if (stored?.type === "api" && stored.key) keys[provider] = stored.key
+  }
+  return keys as WebSearchKeys
+})
+
+// The environment wins over the stored credential. A stored key is the settled
+// choice; an exported one is a deliberate override for this run, which is how
+// CI and one-off invocations expect to work.
+export function mergeWebSearchKeys(stored: WebSearchKeys, env: WebSearchKeys = webSearchKeysFromEnv()): WebSearchKeys {
+  return {
+    tavily: env.tavily || stored.tavily,
+    parallel: env.parallel || stored.parallel,
+    exa: env.exa || stored.exa,
+  }
+}
+
+export const resolveWebSearchKeys = Effect.fn("WebSearch.resolveKeys")(function* (auth: Auth.Interface) {
+  return mergeWebSearchKeys(yield* webSearchKeysFromAuth(auth))
+})
 
 // Exa last: it is the only provider that answers unauthenticated, so a key set
 // for it says least about what the operator wants.
@@ -102,10 +134,10 @@ export function webSearchModelName(extra: Tool.Context["extra"]) {
   return (apiID ?? id)?.slice(0, 100)
 }
 
-function parallelAuthHeaders() {
+function parallelAuthHeaders(apiKey: string | undefined) {
   const headers = { "User-Agent": `opencode/${InstallationVersion}` }
-  if (!process.env.PARALLEL_API_KEY) return headers
-  return { ...headers, Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` }
+  if (!apiKey) return headers
+  return { ...headers, Authorization: `Bearer ${apiKey}` }
 }
 
 function callProvider(
@@ -113,6 +145,7 @@ function callProvider(
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
   ctx: Tool.Context,
+  keys: WebSearchKeys,
 ) {
   if (provider === "parallel") {
     return McpWebSearch.call(
@@ -127,7 +160,7 @@ function callProvider(
         model_name: webSearchModelName(ctx.extra),
       },
       "25 seconds",
-      parallelAuthHeaders(),
+      parallelAuthHeaders(keys.parallel),
     )
   }
 
@@ -137,7 +170,7 @@ function callProvider(
     // description about advertising options a given provider may not honour.
     return McpWebSearch.call(
       http,
-      McpWebSearch.tavilyUrl(),
+      McpWebSearch.tavilyUrl(keys.tavily),
       "tavily_search",
       McpWebSearch.TavilySearchArgs,
       {
@@ -151,7 +184,7 @@ function callProvider(
 
   return McpWebSearch.call(
     http,
-    McpWebSearch.EXA_URL,
+    McpWebSearch.exaUrl(keys.exa),
     "web_search_exa",
     McpWebSearch.SearchArgs,
     {
@@ -170,6 +203,7 @@ export const WebSearchTool = Tool.define(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
+    const auth = yield* Auth.Service
 
     return {
       get description() {
@@ -178,11 +212,12 @@ export const WebSearchTool = Tool.define(
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const provider = selectWebSearchProvider(ctx.sessionID, {
-            exa: flags.enableExa,
-            parallel: flags.enableParallel,
-            tavily: flags.enableTavily,
-          })
+          const keys = yield* resolveWebSearchKeys(auth)
+          const provider = selectWebSearchProvider(
+            ctx.sessionID,
+            { exa: flags.enableExa, parallel: flags.enableParallel, tavily: flags.enableTavily },
+            keys,
+          )
           const title = webSearchProviderLabel(provider)
           yield* ctx.metadata({ title: `${title} "${params.query}"`, metadata: { provider } })
 
@@ -200,7 +235,7 @@ export const WebSearchTool = Tool.define(
             },
           })
 
-          const result = yield* callProvider(http, provider, params, ctx)
+          const result = yield* callProvider(http, provider, params, ctx, keys)
 
           return {
             output: result ?? "No search results found. Please try a different query.",
