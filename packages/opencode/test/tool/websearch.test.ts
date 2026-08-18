@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { parseResponse } from "../../src/tool/mcp-websearch"
+import { parseResponse, searchFailureReason } from "../../src/tool/mcp-websearch"
 import {
   mergeWebSearchKeys,
   selectWebSearchProvider,
@@ -172,4 +172,40 @@ describe("websearch MCP response parser", () => {
       expect(result).toBe("search results")
     }),
   )
+})
+
+// Payloads below are the real ones, captured from each provider with a bad key.
+// Both answer HTTP 200 and put the refusal in the result, so nothing upstream
+// sees a failure -- and they disagree on how to express it, which is why the
+// MCP isError flag is not used: Tavily returns isError false on a 401.
+describe("websearch failure detection", () => {
+  test("recognises Tavily's JSON error body", () => {
+    const body = JSON.stringify({
+      error: "Search failed",
+      status: 401,
+      detail: { error: "Unauthorized: missing or invalid API key." },
+      documentation: "https://docs.tavily.com/",
+    })
+    expect(searchFailureReason(body)).toBe("Search failed (401): Unauthorized: missing or invalid API key.")
+  })
+
+  test("recognises Exa's prose error line", () => {
+    const body = "web_search_exa error (401): Invalid API key\nTimestamp: 2026-08-18T22:53:54.847Z"
+    expect(searchFailureReason(body)).toBe("Invalid API key (401)")
+  })
+
+  test("treats real results as success", () => {
+    expect(
+      searchFailureReason("Title: 7-Day Forecast\nURL: https://forecast.weather.gov/\nHigh: 81 F"),
+    ).toBeUndefined()
+    expect(searchFailureReason(undefined)).toBeUndefined()
+    expect(searchFailureReason("")).toBeUndefined()
+  })
+
+  test("does not cry wolf over results that merely mention an error", () => {
+    // Prose about errors is a legitimate search result, not a failed search.
+    expect(searchFailureReason("Title: How to fix a 401 error\nURL: https://example.com")).toBeUndefined()
+    // Well-formed JSON without an error field is a result too.
+    expect(searchFailureReason('{"results":[{"title":"x"}]}')).toBeUndefined()
+  })
 })

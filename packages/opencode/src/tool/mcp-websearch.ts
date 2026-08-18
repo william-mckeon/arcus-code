@@ -128,3 +128,39 @@ export const call = <F extends Schema.Struct.Fields>(
     const body = yield* response.text
     return yield* parseResponse(body)
   })
+
+// A failed search comes back as a normal result, not an error: the HTTP status
+// is 200 and the payload is whatever the provider decided to say. The two
+// backends disagree on how to say it -- Exa sets MCP's isError and writes
+// "web_search_exa error (401): Invalid API key", while Tavily leaves isError
+// false and returns a JSON body carrying its own status. isError is therefore
+// not a signal worth trusting, so classify the payload the model would
+// otherwise be handed as though it were a search result.
+//
+// Returns a short reason when the text looks like a provider failure rather
+// than results, and undefined otherwise. Deliberately conservative: a false
+// negative logs nothing, while a false positive would cry wolf over a genuine
+// result that happens to mention an error.
+export function searchFailureReason(text: string | undefined) {
+  if (!text) return undefined
+  const trimmed = text.trim()
+
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (!parsed || typeof parsed !== "object" || !("error" in parsed)) return undefined
+      const status = typeof parsed.status === "number" ? ` (${parsed.status})` : ""
+      const detail =
+        parsed.detail && typeof parsed.detail === "object" && "error" in parsed.detail
+          ? `: ${String(parsed.detail.error)}`
+          : ""
+      return `${String(parsed.error)}${status}${detail}`
+    } catch {
+      return undefined
+    }
+  }
+
+  const match = trimmed.match(/^\S+ error \((\d{3})\):\s*(.+)$/m)
+  if (match) return `${match[2]} (${match[1]})`
+  return undefined
+}

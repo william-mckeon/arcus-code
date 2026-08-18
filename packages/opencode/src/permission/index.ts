@@ -71,7 +71,17 @@ const layer = Layer.effect(
 
       for (const pattern of request.patterns) {
         const rule = evaluate(request.permission, pattern, ruleset, approved)
-        yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
+        // session.id matters here: run= identifies the process, and one process
+        // serves many sessions, so without it these lines cannot be tied to the
+        // conversation that produced them. Reading a shared log, that is the
+        // difference between "this session never searched" and "it searched and
+        // the call failed".
+        yield* Effect.logInfo("evaluated", {
+          permission: request.permission,
+          "session.id": request.sessionID,
+          pattern,
+          action: rule,
+        })
         if (rule.action === "deny") {
           return yield* new PermissionV1.DeniedError({
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),

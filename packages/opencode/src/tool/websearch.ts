@@ -237,6 +237,19 @@ export const WebSearchTool = Tool.define(
 
           const result = yield* callProvider(http, provider, params, ctx, keys)
 
+          // A provider that rejects the credential still answers 200 with the
+          // refusal as the result text, so nothing upstream treats it as a
+          // failure and the only trace is whatever the model then says about
+          // it. An expired key would otherwise be invisible in the log.
+          const failure = McpWebSearch.searchFailureReason(result)
+          if (failure) {
+            yield* Effect.logWarning("web search failed", {
+              provider,
+              "session.id": ctx.sessionID,
+              reason: failure,
+            })
+          }
+
           return {
             output: result ?? "No search results found. Please try a different query.",
             title: `${title}: ${params.query}`,
