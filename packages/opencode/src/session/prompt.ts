@@ -240,12 +240,24 @@ const layer = Layer.effect(
           // model -- the whole point of routing cheap work away from the main
           // one -- is the one call whose cost never appears in the log.
           Stream.tap((event) =>
-            LLMEvent.is.stepFinish(event)
+            // Both step-finish and finish carry an optional usage payload, and
+            // which one is populated depends on the provider. Take whichever
+            // actually has it -- tapping step-finish alone produced a usage line
+            // of all zeros, which is worse than none at all.
+            //
+            // Some models report nothing here: togetherai/Inkling-Small sends
+            // step-finish and finish with no usage on either, while GLM-5.2 on
+            // the same provider does report it. So the small model may still
+            // have no usage line, and that is the provider's silence rather
+            // than a missing tap. Logging the zeros anyway would assert the
+            // call was free, which is the same mistake as an unpriced cache
+            // write.
+            (LLMEvent.is.stepFinish(event) || LLMEvent.is.finish(event)) && event.usage
               ? Effect.gen(function* () {
                   const usage = Session.getUsage({
                     model: mdl,
                     usage: event.usage ?? new Usage({}),
-                    metadata: event.providerMetadata,
+                    metadata: "providerMetadata" in event ? event.providerMetadata : undefined,
                   })
                   yield* Effect.logInfo("usage", {
                     providerID: mdl.providerID,
