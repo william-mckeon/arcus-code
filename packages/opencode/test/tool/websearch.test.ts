@@ -8,10 +8,23 @@ import { it } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 
 const SESSION_ID = "ses_0196aabbccddeeff001122334455"
+const NO_FLAGS = { exa: false, parallel: false, tavily: false }
+// Selection and the availability gate both read API keys, so every case passes
+// them explicitly. Left to the environment these tests would pass or fail based
+// on whether the machine running them happens to have a search key exported.
+const NO_KEYS = {}
 
 describe("websearch provider", () => {
   test("selects a stable provider per session", () => {
     expect(selectWebSearchProvider(SESSION_ID)).toBe(selectWebSearchProvider(SESSION_ID))
+  })
+
+  test("does not vary by session", () => {
+    // The old behaviour was checksum(sessionID) % 2, so two sessions could get
+    // different search engines with nothing to explain why.
+    expect(selectWebSearchProvider("ses_aaaaaaaaaaaaaaaaaaaaaaaaaaaa", NO_FLAGS, NO_KEYS)).toBe(
+      selectWebSearchProvider("ses_bbbbbbbbbbbbbbbbbbbbbbbbbbbb", NO_FLAGS, NO_KEYS),
+    )
   })
 
   test("supports an operational override", () => {
@@ -30,23 +43,48 @@ describe("websearch provider", () => {
   })
 
   test("routes to Exa when the Exa flag is enabled", () => {
-    expect(selectWebSearchProvider(SESSION_ID, { exa: true, parallel: false })).toBe("exa")
+    expect(selectWebSearchProvider(SESSION_ID, { ...NO_FLAGS, exa: true }, NO_KEYS)).toBe("exa")
   })
 
   test("routes to Parallel when the Parallel flag is enabled", () => {
-    expect(selectWebSearchProvider(SESSION_ID, { exa: false, parallel: true })).toBe("parallel")
+    expect(selectWebSearchProvider(SESSION_ID, { ...NO_FLAGS, parallel: true }, NO_KEYS)).toBe("parallel")
   })
 
-  test("is only enabled for opencode or explicit websearch provider flags", () => {
-    expect(webSearchEnabled(ProviderV2.ID.opencode, { exa: false, parallel: false })).toBe(true)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: false })).toBe(false)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: true, parallel: false })).toBe(true)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: true })).toBe(true)
+  test("routes to Tavily when the Tavily flag is enabled", () => {
+    expect(selectWebSearchProvider(SESSION_ID, { ...NO_FLAGS, tavily: true }, NO_KEYS)).toBe("tavily")
+  })
+
+  test("a single configured key selects its provider", () => {
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { tavily: "key" })).toBe("tavily")
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { parallel: "key" })).toBe("parallel")
+  })
+
+  test("ambiguous keys fall back to the default rather than guessing", () => {
+    expect(selectWebSearchProvider(SESSION_ID, NO_FLAGS, { tavily: "key", exa: "key" })).toBe("exa")
+  })
+
+  test("an explicit flag beats a configured key", () => {
+    expect(selectWebSearchProvider(SESSION_ID, { ...NO_FLAGS, parallel: true }, { tavily: "key" })).toBe("parallel")
+  })
+
+  test("is enabled for opencode, an explicit flag, or a configured key", () => {
+    expect(webSearchEnabled(ProviderV2.ID.opencode, NO_FLAGS, NO_KEYS)).toBe(true)
+    expect(webSearchEnabled(ProviderV2.ID.openai, NO_FLAGS, NO_KEYS)).toBe(false)
+    expect(webSearchEnabled(ProviderV2.ID.openai, { ...NO_FLAGS, exa: true }, NO_KEYS)).toBe(true)
+    expect(webSearchEnabled(ProviderV2.ID.openai, { ...NO_FLAGS, parallel: true }, NO_KEYS)).toBe(true)
+    expect(webSearchEnabled(ProviderV2.ID.openai, { ...NO_FLAGS, tavily: true }, NO_KEYS)).toBe(true)
+  })
+
+  test("a configured key makes web search available on any model provider", () => {
+    // The gate used to be opencode-only, which hid the tool from every other
+    // provider even when the operator had credentials for a search backend.
+    expect(webSearchEnabled(ProviderV2.ID.openai, NO_FLAGS, { tavily: "key" })).toBe(true)
   })
 
   test("uses branded labels", () => {
     expect(webSearchProviderLabel("parallel")).toBe("Parallel Web Search")
     expect(webSearchProviderLabel("exa")).toBe("Exa Web Search")
+    expect(webSearchProviderLabel("tavily")).toBe("Tavily Web Search")
     expect(webSearchProviderLabel(undefined)).toBe("Web Search")
   })
 

@@ -32,18 +32,18 @@ describe("WebSearchTool provider selection", () => {
   })
 
   test("supports an explicit operational override", () => {
-    expect(WebSearchTool.selectProvider(sessionID, { enableExa: false, enableParallel: false }, "parallel")).toBe(
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: false, enableParallel: false, enableTavily: false }, "parallel")).toBe(
       "parallel",
     )
-    expect(WebSearchTool.selectProvider(sessionID, { enableExa: false, enableParallel: false }, "exa")).toBe("exa")
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: false, enableParallel: false, enableTavily: false }, "exa")).toBe("exa")
   })
 
   test("prefers Parallel when both explicit flags are enabled", () => {
-    expect(WebSearchTool.selectProvider(sessionID, { enableExa: true, enableParallel: true })).toBe("parallel")
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: true, enableParallel: true, enableTavily: false })).toBe("parallel")
   })
 
   test("prefers Exa when only its explicit flag is enabled", () => {
-    expect(WebSearchTool.selectProvider(sessionID, { enableExa: true, enableParallel: false })).toBe("exa")
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: true, enableParallel: false, enableTavily: false })).toBe("exa")
   })
 })
 
@@ -71,7 +71,7 @@ const requests: Request[] = []
 const assertions: PermissionV2.AssertInput[] = []
 let responseBody = payload("search results")
 let makeResponse = () => new Response(responseBody, { status: 200 })
-let config: WebSearchTool.Config = { enableExa: false, enableParallel: false }
+let config: WebSearchTool.Config = { enableExa: false, enableParallel: false, enableTavily: false }
 
 beforeEach(() => {
   responseBody = payload("search results")
@@ -115,11 +115,17 @@ const websearchConfig = Layer.succeed(
     get enableParallel() {
       return config.enableParallel
     },
+    get enableTavily() {
+      return config.enableTavily
+    },
     get exaApiKey() {
       return config.exaApiKey
     },
     get parallelApiKey() {
       return config.parallelApiKey
+    },
+    get tavilyApiKey() {
+      return config.tavilyApiKey
     },
   }),
 )
@@ -141,7 +147,7 @@ describe("WebSearchTool registration", () => {
       requests.length = 0
       assertions.length = 0
       responseBody = payload("exa results")
-      config = { provider: "exa", enableExa: false, enableParallel: false }
+      config = { provider: "exa", enableExa: false, enableParallel: false, enableTavily: false }
       const registry = yield* ToolRegistry.Service
 
       expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["websearch"])
@@ -208,7 +214,13 @@ describe("WebSearchTool registration", () => {
       requests.length = 0
       assertions.length = 0
       responseBody = payload("parallel results")
-      config = { provider: "parallel", enableExa: false, enableParallel: false, parallelApiKey: "parallel-secret" }
+      config = {
+        provider: "parallel",
+        enableExa: false,
+        enableParallel: false,
+        enableTavily: false,
+        parallelApiKey: "parallel-secret",
+      }
       const registry = yield* ToolRegistry.Service
 
       const settled = yield* settleTool(registry, {
@@ -247,7 +259,13 @@ describe("WebSearchTool registration", () => {
       requests.length = 0
       assertions.length = 0
       responseBody = payload("credentialed exa results")
-      config = { provider: "exa", enableExa: false, enableParallel: false, exaApiKey: "exa secret" }
+      config = {
+        provider: "exa",
+        enableExa: false,
+        enableParallel: false,
+        enableTavily: false,
+        exaApiKey: "exa secret",
+      }
       const registry = yield* ToolRegistry.Service
 
       const settled = yield* settleTool(registry, {
@@ -261,12 +279,57 @@ describe("WebSearchTool registration", () => {
     }),
   )
 
+  it.effect("calls tavily_search and keeps the credential in the transport URL", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      responseBody = payload("tavily results")
+      config = {
+        provider: "tavily",
+        enableExa: false,
+        enableParallel: false,
+        enableTavily: false,
+        tavilyApiKey: "tavily secret",
+      }
+      const registry = yield* ToolRegistry.Service
+
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: {
+          type: "tool-call",
+          id: "call-tavily",
+          name: "websearch",
+          input: { query: "effect schema", numResults: 3, type: "deep" },
+        },
+      })
+
+      expect(requests[0]?.url).toBe(`${WebSearchTool.TAVILY_URL}?tavilyApiKey=tavily+secret`)
+      expect(requests[0]?.body).toMatchObject({
+        params: {
+          name: "tavily_search",
+          // Tavily names these differently from the tool's Exa-derived vocabulary:
+          // numResults becomes max_results and type "deep" becomes "advanced".
+          arguments: { query: "effect schema", max_results: 3, search_depth: "advanced" },
+        },
+      })
+      expect(settled).toEqual({
+        result: { type: "text", value: "tavily results" },
+        output: {
+          structured: { provider: "tavily", text: "tavily results" },
+          content: [{ type: "text", text: "tavily results" }],
+        },
+      })
+      expect(JSON.stringify(settled)).not.toContain("tavily secret")
+    }),
+  )
+
   it.effect("returns the legacy no-results fallback as concise model text", () =>
     Effect.gen(function* () {
       requests.length = 0
       assertions.length = 0
       responseBody = ""
-      config = { provider: "exa", enableExa: false, enableParallel: false }
+      config = { provider: "exa", enableExa: false, enableParallel: false, enableTavily: false }
       const registry = yield* ToolRegistry.Service
 
       expect(
@@ -299,7 +362,7 @@ describe("WebSearchTool registration", () => {
           }),
           { status: 200 },
         )
-      config = { provider: "exa", enableExa: false, enableParallel: false }
+      config = { provider: "exa", enableExa: false, enableParallel: false, enableTavily: false }
       const registry = yield* ToolRegistry.Service
 
       expect(

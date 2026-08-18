@@ -12,13 +12,13 @@ import { PermissionV2 } from "../permission"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 import { collectBoundedResponseBody } from "./http-body"
-import { checksum } from "../util/encode"
 import { ToolRegistry } from "./registry"
 
 export const name = "websearch"
 export const NO_RESULTS = "No search results found. Please try a different query."
 export const EXA_URL = "https://mcp.exa.ai/mcp"
 export const PARALLEL_URL = "https://search.parallel.ai/mcp"
+export const TAVILY_URL = "https://mcp.tavily.com/mcp/"
 export const MAX_NUM_RESULTS = 20
 export const MAX_CONTEXT_CHARACTERS = 50_000
 export const MAX_RESPONSE_BYTES = 256 * 1024
@@ -56,15 +56,17 @@ export const Input = Schema.Struct({
   ),
 })
 
-export const Provider = Schema.Literals(["exa", "parallel"])
+export const Provider = Schema.Literals(["exa", "parallel", "tavily"])
 export type Provider = typeof Provider.Type
 
 export interface Config {
   readonly provider?: Provider
   readonly enableExa: boolean
   readonly enableParallel: boolean
+  readonly enableTavily: boolean
   readonly exaApiKey?: string
   readonly parallelApiKey?: string
+  readonly tavilyApiKey?: string
 }
 
 export class ConfigService extends Context.Service<ConfigService, Config>()("@opencode/v2/WebSearchConfig") {}
@@ -73,27 +75,53 @@ export class ConfigService extends Context.Service<ConfigService, Config>()("@op
 export const defaultConfigLayer = Layer.sync(ConfigService, () =>
   ConfigService.of({
     provider:
-      process.env.OPENCODE_WEBSEARCH_PROVIDER === "exa" || process.env.OPENCODE_WEBSEARCH_PROVIDER === "parallel"
+      process.env.OPENCODE_WEBSEARCH_PROVIDER === "exa" ||
+      process.env.OPENCODE_WEBSEARCH_PROVIDER === "parallel" ||
+      process.env.OPENCODE_WEBSEARCH_PROVIDER === "tavily"
         ? process.env.OPENCODE_WEBSEARCH_PROVIDER
         : undefined,
     enableExa: truthy("OPENCODE_EXPERIMENTAL") || truthy("OPENCODE_ENABLE_EXA") || truthy("OPENCODE_EXPERIMENTAL_EXA"),
     enableParallel: truthy("OPENCODE_ENABLE_PARALLEL") || truthy("OPENCODE_EXPERIMENTAL_PARALLEL"),
+    enableTavily: truthy("OPENCODE_ENABLE_TAVILY") || truthy("OPENCODE_EXPERIMENTAL_TAVILY"),
     exaApiKey: process.env.EXA_API_KEY,
     parallelApiKey: process.env.PARALLEL_API_KEY,
+    tavilyApiKey: process.env.TAVILY_API_KEY,
   }),
 )
 
 export const configNode = makeLocationNode({ service: ConfigService, layer: defaultConfigLayer, deps: [] })
 
+// Mirrors selectWebSearchProvider in packages/opencode/src/tool/websearch.ts.
+// The session hash that used to split traffic between two providers is gone: it
+// does not extend to a third, and a search engine chosen by a hash of the
+// session id is not something a user can reason about. A lone configured key
+// now selects its provider, since that is the least surprising reading of
+// setting one.
 export function selectProvider(
-  sessionID: string,
-  flags: Pick<Config, "enableExa" | "enableParallel"> = { enableExa: false, enableParallel: false },
+  _sessionID: string,
+  flags: Pick<Config, "enableExa" | "enableParallel" | "enableTavily"> = {
+    enableExa: false,
+    enableParallel: false,
+    enableTavily: false,
+  },
   override?: Provider,
+  keys: Pick<Config, "exaApiKey" | "parallelApiKey" | "tavilyApiKey"> = {},
 ): Provider {
   if (override) return override
+  if (flags.enableTavily) return "tavily"
   if (flags.enableParallel) return "parallel"
   if (flags.enableExa) return "exa"
-  return Number.parseInt(checksum(sessionID) ?? "0", 36) % 2 === 0 ? "exa" : "parallel"
+
+  const keyed = (
+    [
+      ["tavily", keys.tavilyApiKey],
+      ["parallel", keys.parallelApiKey],
+      ["exa", keys.exaApiKey],
+    ] as const
+  ).filter(([, key]) => key)
+  if (keyed.length === 1) return keyed[0][0]
+
+  return "exa"
 }
 
 const McpResult = Schema.Struct({
@@ -129,6 +157,14 @@ const ExaArgs = Schema.Struct({
   livecrawl: Schema.String,
   contextMaxCharacters: Schema.optional(Schema.Number),
 })
+// tavily_search as the live endpoint reports it: query is the only required
+// field. Tavily also accepts domain filters and date ranges, which nothing
+// upstream of this tool can currently express.
+const TavilyArgs = Schema.Struct({
+  query: Schema.String,
+  max_results: Schema.optional(Schema.Number),
+  search_depth: Schema.optional(Schema.String),
+})
 const ParallelArgs = Schema.Struct({
   objective: Schema.String,
   search_queries: Schema.Array(Schema.String),
@@ -147,6 +183,23 @@ const exaUrl = (apiKey: string | undefined) => {
   const url = new URL(EXA_URL)
   url.searchParams.set("exaApiKey", apiKey)
   return url.toString()
+}
+
+// Tavily takes its key in the query string, like Exa rather than Parallel.
+const tavilyUrl = (apiKey: string | undefined) => {
+  if (!apiKey) return TAVILY_URL
+  const url = new URL(TAVILY_URL)
+  url.searchParams.set("tavilyApiKey", apiKey)
+  return url.toString()
+}
+
+// `type` is Exa's vocabulary; Tavily names the same idea differently and offers
+// a fourth level. Map rather than pass through, and let 'auto' fall to Tavily's
+// own default instead of inventing a preference.
+const tavilySearchDepth = (type: string | undefined) => {
+  if (type === "deep") return "advanced"
+  if (type === "fast") return "fast"
+  return "basic"
 }
 
 const callMcp = <F extends Schema.Struct.Fields>(
@@ -204,7 +257,7 @@ const layer = Layer.effectDiscard(
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
           execute: (input, context) => {
-            const provider = selectProvider(context.sessionID, config, config.provider)
+            const provider = selectProvider(context.sessionID, config, config.provider, config)
             return Effect.gen(function* () {
               yield* permission.assert({
                 action: name,
@@ -225,7 +278,13 @@ const layer = Layer.effectDiscard(
                       livecrawl: input.livecrawl || "fallback",
                       contextMaxCharacters: input.contextMaxCharacters,
                     })
-                  : yield* callMcp(
+                  : provider === "tavily"
+                    ? yield* callMcp(http, tavilyUrl(config.tavilyApiKey), "tavily_search", TavilyArgs, {
+                        query: input.query,
+                        max_results: input.numResults || 8,
+                        search_depth: tavilySearchDepth(input.type),
+                      })
+                    : yield* callMcp(
                       http,
                       PARALLEL_URL,
                       "web_search",

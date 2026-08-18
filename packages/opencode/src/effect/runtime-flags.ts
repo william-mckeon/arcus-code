@@ -37,6 +37,10 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
     enabled: bool("OPENCODE_ENABLE_PARALLEL"),
     legacy: bool("OPENCODE_EXPERIMENTAL_PARALLEL"),
   }).pipe(Config.map((flags) => flags.enabled || flags.legacy)),
+  enableTavily: Config.all({
+    enabled: bool("OPENCODE_ENABLE_TAVILY"),
+    legacy: bool("OPENCODE_EXPERIMENTAL_TAVILY"),
+  }).pipe(Config.map((flags) => flags.enabled || flags.legacy)),
   enableExperimentalModels: bool("OPENCODE_ENABLE_EXPERIMENTAL_MODELS"),
   enableQuestionTool: bool("OPENCODE_ENABLE_QUESTION_TOOL"),
   experimentalReferences: enabledByExperimental("OPENCODE_EXPERIMENTAL_REFERENCES"),

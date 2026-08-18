@@ -3,7 +3,6 @@ import { HttpClient } from "effect/unstable/http"
 import * as Tool from "./tool"
 import * as McpWebSearch from "./mcp-websearch"
 import DESCRIPTION from "./websearch.txt"
-import { checksum } from "@opencode-ai/core/util/encode"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
@@ -24,21 +23,56 @@ export const Parameters = Schema.Struct({
   }),
 })
 
-const WebSearchProviderSchema = Schema.Literals(["exa", "parallel"])
+const WebSearchProviderSchema = Schema.Literals(["exa", "parallel", "tavily"])
 export type WebSearchProvider = Schema.Schema.Type<typeof WebSearchProviderSchema>
 
-export function selectWebSearchProvider(sessionID: string, flags = { exa: false, parallel: false }): WebSearchProvider {
+export type WebSearchFlags = { exa: boolean; parallel: boolean; tavily: boolean }
+export type WebSearchKeys = { exa?: string; parallel?: string; tavily?: string }
+
+export function webSearchKeysFromEnv(): WebSearchKeys {
+  return {
+    exa: process.env.EXA_API_KEY,
+    parallel: process.env.PARALLEL_API_KEY,
+    tavily: process.env.TAVILY_API_KEY,
+  }
+}
+
+const DEFAULT_PROVIDER: WebSearchProvider = "exa"
+
+// Selection used to be `checksum(sessionID) % 2`, an A/B split that handed each
+// session a different search engine with nothing to explain the difference.
+// That does not survive a third provider -- `% 3` would only make it stranger --
+// so the choice is now declared rather than drawn.
+//
+// A configured key is treated as intent: setting TAVILY_API_KEY and nothing else
+// is how most people will expect to select Tavily, without also having to name
+// it. Only an unambiguous single key counts; with several configured the
+// explicit override or flag decides, and failing that the default holds. The
+// result no longer depends on the session, so it is stable across a project.
+export function selectWebSearchProvider(
+  _sessionID: string,
+  flags: WebSearchFlags = { exa: false, parallel: false, tavily: false },
+  keys: WebSearchKeys = webSearchKeysFromEnv(),
+  configured?: WebSearchProvider,
+): WebSearchProvider {
   const override = process.env.OPENCODE_WEBSEARCH_PROVIDER
-  if (override === "exa" || override === "parallel") return override
+  if (override === "exa" || override === "parallel" || override === "tavily") return override
+  if (configured) return configured
+
+  if (flags.tavily) return "tavily"
   if (flags.parallel) return "parallel"
   if (flags.exa) return "exa"
 
-  return Number.parseInt(checksum(sessionID) ?? "0", 36) % 2 === 0 ? "exa" : "parallel"
+  const keyed = (["tavily", "parallel", "exa"] as const).filter((provider) => keys[provider])
+  if (keyed.length === 1) return keyed[0]
+
+  return DEFAULT_PROVIDER
 }
 
 export function webSearchProviderLabel(provider: unknown) {
   if (provider === "parallel") return "Parallel Web Search"
   if (provider === "exa") return "Exa Web Search"
+  if (provider === "tavily") return "Tavily Web Search"
   return "Web Search"
 }
 
@@ -80,6 +114,24 @@ function callProvider(
     )
   }
 
+  if (provider === "tavily") {
+    // livecrawl and contextMaxCharacters have no Tavily equivalent and are
+    // dropped, the same way Parallel drops them. See the note on the tool
+    // description about advertising options a given provider may not honour.
+    return McpWebSearch.call(
+      http,
+      McpWebSearch.tavilyUrl(),
+      "tavily_search",
+      McpWebSearch.TavilySearchArgs,
+      {
+        query: params.query,
+        max_results: params.numResults || 8,
+        search_depth: McpWebSearch.tavilySearchDepth(params.type),
+      },
+      "25 seconds",
+    )
+  }
+
   return McpWebSearch.call(
     http,
     McpWebSearch.EXA_URL,
@@ -112,6 +164,7 @@ export const WebSearchTool = Tool.define(
           const provider = selectWebSearchProvider(ctx.sessionID, {
             exa: flags.enableExa,
             parallel: flags.enableParallel,
+            tavily: flags.enableTavily,
           })
           const title = webSearchProviderLabel(provider)
           yield* ctx.metadata({ title: `${title} "${params.query}"`, metadata: { provider } })

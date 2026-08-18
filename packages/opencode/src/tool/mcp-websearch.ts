@@ -6,6 +6,15 @@ export const EXA_URL = process.env.EXA_API_KEY
   : "https://mcp.exa.ai/mcp"
 export const PARALLEL_URL = "https://search.parallel.ai/mcp"
 
+// Tavily carries its key in the query string like Exa, not in a header like
+// Parallel. Built from a function rather than a module constant so a key set
+// through config -- not just the environment -- still reaches the URL.
+export const TAVILY_BASE_URL = "https://mcp.tavily.com/mcp/"
+export function tavilyUrl(apiKey: string | undefined = process.env.TAVILY_API_KEY) {
+  if (!apiKey) return TAVILY_BASE_URL
+  return `${TAVILY_BASE_URL}?tavilyApiKey=${encodeURIComponent(apiKey)}`
+}
+
 const McpResult = Schema.Struct({
   result: Schema.Struct({
     content: Schema.Array(
@@ -54,6 +63,26 @@ export const ParallelSearchArgs = Schema.Struct({
   session_id: Schema.optional(Schema.String),
   model_name: Schema.optional(Schema.String),
 })
+
+// Mirrors tavily_search as the live endpoint reports it: query is the only
+// required field. Only the arguments the shared tool can actually populate are
+// modelled -- Tavily also accepts domain filters, date ranges and image
+// options, which nothing upstream of here can currently express.
+export const TavilySearchArgs = Schema.Struct({
+  query: Schema.String,
+  max_results: Schema.optional(Schema.Number),
+  search_depth: Schema.optional(Schema.String),
+})
+
+// The shared `type` parameter is Exa's vocabulary. Tavily names the same idea
+// differently and offers a fourth level, so map rather than pass through:
+// 'deep' means spend more, 'fast' means spend less, and 'auto' takes Tavily's
+// own default rather than inventing a preference.
+export function tavilySearchDepth(type: string | undefined) {
+  if (type === "deep") return "advanced"
+  if (type === "fast") return "fast"
+  return "basic"
+}
 
 const McpRequest = <F extends Schema.Struct.Fields>(args: Schema.Struct<F>) =>
   Schema.Struct({

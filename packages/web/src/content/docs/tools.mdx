@@ -257,14 +257,19 @@ Allows the LLM to fetch and read web pages. Useful for looking up documentation 
 Search the web for information.
 
 :::note
-This tool is only available when using the OpenCode provider or when the `OPENCODE_ENABLE_EXA` environment variable is set to any truthy value (e.g., `true` or `1`).
-
-To enable when launching OpenCode:
+This tool is available when using the OpenCode provider, when a search provider API key is configured, or when a provider flag is set. Configuring a key is the usual route — the tool then works with any model provider.
 
 ```bash
-OPENCODE_ENABLE_EXA=1 opencode
+TAVILY_API_KEY=... arcus-code
 ```
 
+Supported keys are `TAVILY_API_KEY`, `EXA_API_KEY` and `PARALLEL_API_KEY`. Setting exactly one selects that provider. If several are set, choose between them explicitly:
+
+```bash
+OPENCODE_WEBSEARCH_PROVIDER=tavily arcus-code
+```
+
+The flags `OPENCODE_ENABLE_TAVILY`, `OPENCODE_ENABLE_EXA` and `OPENCODE_ENABLE_PARALLEL` also enable the tool and take precedence over a configured key.
 :::
 
 ```json title="opencode.json" {4}
@@ -276,7 +281,9 @@ OPENCODE_ENABLE_EXA=1 opencode
 }
 ```
 
-Performs web searches using Exa AI to find relevant information online. Useful for researching topics, finding current events, or gathering information beyond the training data cutoff.
+Performs web searches through Tavily, Exa or Parallel to find relevant information online. Useful for researching topics, finding current events, or gathering information beyond the training data cutoff.
+
+The `numResults` and `type` options are honoured by every provider. `livecrawl` and `contextMaxCharacters` are Exa-specific and are ignored by the others.
 
 No API key is required — the tool connects directly to Exa AI's hosted MCP service without authentication.
 
