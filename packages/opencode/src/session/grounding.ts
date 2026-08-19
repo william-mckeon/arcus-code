@@ -138,6 +138,26 @@ export function absenceClaim(finalText: string | undefined) {
 
 const sentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/)
 
+// A question is not an assertion. An answer that asks "Tests pass?" before
+// saying it cannot tell was read as claiming they do, because the sentence
+// splitter cuts at the question mark and leaves "Tests pass?" standing alone.
+const isQuestion = (sentence: string) => sentence.trim().endsWith("?")
+
+// The path is being described as a CONTAINER of something absent rather than
+// absent itself: "no test files in `src/auth`" says nothing about whether
+// src/auth exists, so reporting it as "described as empty" is simply wrong.
+// Detected by a containment preposition immediately before the citation.
+const CONTAINED_IN = /\b(?:in|inside|within|under|from|across|throughout)\s+$/i
+
+function claimsPathIsAbsent(sentence: string, path: string) {
+  for (const quote of ["`", "'", '"']) {
+    const at = sentence.indexOf(quote + path)
+    if (at === -1) continue
+    if (CONTAINED_IN.test(sentence.slice(0, at))) return false
+  }
+  return true
+}
+
 export type PathKind = "file" | "nonEmptyDirectory" | "missing"
 
 /**
@@ -157,6 +177,7 @@ export function absenceContradictions(
   const out: string[] = []
   const seen = new Set<string>()
   for (const sent of sentences(finalText)) {
+    if (isQuestion(sent)) continue
     if (!ABSENCE.test(sent)) continue
     // In strict mode require a real absence predicate and no rebuttal marker,
     // so "I did not open `X`" and "the claim that `X` is missing is incorrect"
@@ -164,6 +185,7 @@ export function absenceContradictions(
     if (options.strict && (!ABSENCE_PREDICATE.test(sent) || ABSENCE_META.test(sent))) continue
     for (const p of citedPaths(sent, false)) {
       // BROAD on purpose: a bare directory citation must count too.
+      if (!claimsPathIsAbsent(sent, p)) continue
       const kind = kindOf(p)
       let msg: string | undefined
       if (kind === "file") msg = `'${p}' is described as missing/empty, but the file EXISTS`
@@ -197,6 +219,14 @@ export const HEDGED =
 export const CHECK_CMD =
   /\b(?:pytest|jest|vitest|mocha|tox|nox|ctest|rspec|phpunit|tsc|tsgo|eslint|oxlint|ruff|flake8|pylint|mypy|pyright|black\s+--check|prettier\s+--check|cmake|ninja|bazel|meson|msbuild|xcodebuild|gradle|mvn|make|go\s+(?:test|build|vet)|cargo\s+(?:test|build|check|clippy)|dotnet\s+(?:test|build)|npm\s+(?:test|ci)|npm\s+run\s+(?:\w*test\w*|build|lint|check|typecheck|tsc|compile|ci)|yarn\s+(?:test|build|lint|check|typecheck|tsc)|pnpm\s+(?:test|build|lint|check|typecheck|tsc)|bun\s+(?:test|run\s+(?:\w*test\w*|build|lint|check|typecheck)))\b/i
 
+// A sentence saying tests do not EXIST is not a claim that they passed. "no
+// tests exist to pass" matched SUCCESS on `tests ... pass` and slipped past
+// HEDGED, which covers "cannot"/"did not" but not a bare "no" -- and a bare
+// "no" cannot go in HEDGED, because "compiles with no errors" is a real
+// success claim that must keep firing.
+const SUCCESS_ABSENT =
+  /\b(?:no|zero)\s+(?:\w+\s+){0,2}tests?\b|\bthere\s+(?:are|were)\s+no\s+tests?\b|\bnothing\s+to\s+(?:test|run)\b|\bvacuous(?:ly)?\b|\bn\/a\b/i
+
 export function ranCheck(command: string | undefined) {
   return CHECK_CMD.test(command ?? "")
 }
@@ -208,7 +238,8 @@ export function ranCheck(command: string | undefined) {
 export function unverifiedSuccessClaim(finalText: string | undefined, verified: boolean) {
   if (!finalText || verified) return []
   for (const sent of sentences(finalText)) {
-    if (!SUCCESS.test(sent) || HEDGED.test(sent)) continue
+    if (isQuestion(sent)) continue
+    if (!SUCCESS.test(sent) || HEDGED.test(sent) || SUCCESS_ABSENT.test(sent)) continue
     return [
       "you state a build, test or check succeeded, but nothing this turn ran one -- run the check, or say plainly that it has not been run",
     ]
@@ -241,6 +272,7 @@ const MUT_DIRECTIONAL =
 export function unbackedMutationClaim(finalText: string | undefined, mutationCount: number) {
   if (!finalText || mutationCount > 0) return []
   for (const sent of sentences(finalText)) {
+    if (isQuestion(sent)) continue
     if (!(MUTATION_DONE.test(sent) && FILE_REF.test(sent))) continue
     if (HEDGED.test(sent) || MUT_NEGATED.test(sent)) continue
     if (!(MUT_FIRST_PERSON.test(sent) || MUT_DIRECTIONAL.test(sent))) continue
@@ -270,6 +302,17 @@ export function deterministicProblems(paths: string[], exists: (path: string) =>
  * the same claim. The leniency keeps this conservative on purpose -- err toward
  * grounded, so a correct citation is never called a phantom over a bare name.
  */
+/**
+ * True if a cited token is a bare filename rather than a path. Absence of such
+ * a token is unprovable by resolving it against the workspace root: an answer
+ * citing `cors.go` for a file that really lives at
+ * src/auth/internal/middleware/cors.go is correct, and reporting it as "not
+ * found in the workspace" is the check being wrong, not the answer.
+ */
+export function isBareName(cited: string) {
+  return !cited.includes("/")
+}
+
 export function groundedBy(cited: string, evidence: Iterable<string>) {
   const base = cited.split("/").pop()
   for (const e of evidence) {
@@ -310,6 +353,13 @@ export interface Options {
   readonly checkPaths?: boolean
   readonly checkWeb?: boolean
   readonly checkMutations?: boolean
+  /**
+   * "Does this citation name something that exists?" Separate from
+   * Evidence.kindOf, which answers about one exact location: a bare filename
+   * has no location to resolve, so the caller supplies an oracle that can look
+   * it up wherever it lives. Falls back to kindOf when not given.
+   */
+  readonly existsSomewhere?: (path: string) => boolean
 }
 
 /**
@@ -330,9 +380,8 @@ export function problems(finalText: string | undefined, evidence: Evidence, opti
   if (options.checkMutations) out.push(...unbackedMutationClaim(finalText, evidence.mutations))
   if (options.checkPaths) {
     const cited = citedPaths(finalText, true) // NARROW: a hard check with no model to catch its mistakes
-    out.push(
-      ...deterministicProblems(cited, (p) => evidence.kindOf(p) !== "missing" || groundedBy(p, evidence.touched)),
-    )
+    const exists = options.existsSomewhere ?? ((p: string) => evidence.kindOf(p) !== "missing")
+    out.push(...deterministicProblems(cited, (p) => exists(p) || groundedBy(p, evidence.touched)))
   }
 
   return out

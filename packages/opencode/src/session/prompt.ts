@@ -205,9 +205,13 @@ const layer = Layer.effect(
     const checkGrounding = Effect.fn("SessionPrompt.checkGrounding")(function* (input: {
       sessionID: SessionID
       message: SessionV1.WithParts | undefined
+      turn: readonly SessionV1.WithParts[]
     }) {
       const cfg = yield* config.get()
-      if (!cfg.grounding?.enabled) return
+      // On unless explicitly disabled. A check that only runs when someone
+      // remembers to turn it on is a check that never runs on the sessions
+      // where it would have mattered.
+      if (cfg.grounding?.enabled === false) return
       if (!input.message) return
 
       const finalText = input.message.parts
@@ -236,12 +240,59 @@ const layer = Layer.effect(
         return "missing"
       }
 
-      const evidence = GroundingEvidence.collect({ parts: input.message.parts, kindOf })
+      // Evidence spans the whole TURN, not the closing message. A loop runs many
+      // steps and each one is its own assistant message, so the tool calls that
+      // read the files usually sit on earlier messages -- collecting only from
+      // the last one reported files the run had plainly read as never touched.
+      const evidence = GroundingEvidence.collect({
+        parts: input.turn.flatMap((message) => message.parts),
+        kindOf,
+      })
+
+      // A citation written as a bare filename cannot be located by resolving it
+      // against the worktree root, so "not found" would be unprovable from the
+      // token alone -- an answer citing `cors.go` for a file that really lives
+      // at src/auth/internal/middleware/cors.go is correct, and calling it a
+      // phantom is the check being wrong. Index basenames once, and only when
+      // an answer actually cites one, so the walk is skipped on nearly every
+      // turn. Bounded, and heavy directories are skipped, because the point is
+      // to answer "does this name exist anywhere" -- not to enumerate the repo.
+      let basenames: Set<string> | undefined
+      const indexBasenames = () => {
+        if (basenames) return basenames
+        const found = new Set<string>()
+        const skip = new Set([".git", "node_modules", "dist", "build", "vendor", ".venv", "target", ".next"])
+        const walk = (dir: string, depth: number) => {
+          if (found.size >= 20000 || depth > 12) return
+          let entries: fs.Dirent[]
+          try {
+            entries = fs.readdirSync(dir, { withFileTypes: true })
+          } catch {
+            return
+          }
+          for (const entry of entries) {
+            if (found.size >= 20000) return
+            if (entry.isDirectory()) {
+              if (skip.has(entry.name)) continue
+              walk(path.join(dir, entry.name), depth + 1)
+            } else {
+              found.add(entry.name)
+            }
+          }
+        }
+        walk(ctx.worktree, 0)
+        basenames = found
+        return found
+      }
+      const existsSomewhere = (p: string) =>
+        Grounding.isBareName(p) ? indexBasenames().has(p) : kindOf(p) !== "missing"
+
       const found = Grounding.problems(finalText, evidence, {
-        absenceStrict: cfg.grounding.absence_strict ?? true,
-        checkPaths: cfg.grounding.check_paths ?? false,
-        checkWeb: cfg.grounding.check_web ?? false,
-        checkMutations: cfg.grounding.check_mutations ?? false,
+        existsSomewhere,
+        absenceStrict: cfg.grounding?.absence_strict ?? true,
+        checkPaths: cfg.grounding?.check_paths ?? true,
+        checkWeb: cfg.grounding?.check_web ?? true,
+        checkMutations: cfg.grounding?.check_mutations ?? true,
       })
       if (found.length === 0) return
 
@@ -1229,7 +1280,15 @@ const layer = Layer.effect(
                 callID: orphan.callID,
               })
             }
-            yield* checkGrounding({ sessionID, message: lastAssistantMsg })
+            yield* checkGrounding({
+              sessionID,
+              message: lastAssistantMsg,
+              // This turn: the user message that started it, plus every
+              // assistant message replying to it.
+              turn: msgs.filter(
+                (m) => m.info.id === lastUser.id || (m.info.role === "assistant" && m.info.parentID === lastUser.id),
+              ),
+            })
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
           }

@@ -85,20 +85,20 @@ export const Info = Schema.Struct({
     Schema.Struct({
       enabled: Schema.optional(Schema.Boolean).annotate({
         description:
-          "Check whether the closing answer's claims are backed by the files and commands of this run. Findings are logged, not acted on.",
+          "Check whether the closing answer's claims are backed by the files and commands of this run. On by default; findings are logged, not acted on. Set false to disable.",
       }),
       absence_strict: Schema.optional(Schema.Boolean).annotate({
         description:
           "Require a claim to actually predicate absence of the path before flagging it, and ignore rebuttals such as 'I did not open x'. Fewer false flags, slightly fewer catches.",
       }),
       check_paths: Schema.optional(Schema.Boolean).annotate({
-        description: "Flag a file path cited in the answer that does not exist and was never read this run.",
+        description: "Flag a file path cited in the answer that does not exist and was never read this run. On by default.",
       }),
       check_web: Schema.optional(Schema.Boolean).annotate({
-        description: "Flag a URL cited in the answer that was never fetched this run.",
+        description: "Flag a URL cited in the answer that was never fetched this run. On by default.",
       }),
       check_mutations: Schema.optional(Schema.Boolean).annotate({
-        description: "Flag a claim that a file was created or changed when nothing was written this run.",
+        description: "Flag a claim that a file was created or changed when nothing was written this run. On by default.",
       }),
     }),
   ).annotate({

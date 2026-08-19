@@ -7,6 +7,7 @@ import {
   citedUrls,
   deterministicProblems,
   groundedBy,
+  isBareName,
   norm,
   problems,
   ranCheck,
@@ -253,5 +254,88 @@ describe("grounding.norm", () => {
     expect(norm(".\\a\\b.ts")).toBe("a/b.ts")
     expect(norm("./a/b.ts")).toBe("a/b.ts")
     expect(norm("/a/b.ts/")).toBe("a/b.ts")
+  })
+})
+
+// Regressions from the first live sessions. Each of these was flagged on a real
+// answer that was entirely correct.
+describe("grounding false positives found live", () => {
+  const exists = kindOf({ "src/auth": "nonEmptyDirectory", "src/main.ts": "file" })
+
+  test("'no test files in X' does not claim X is empty", () => {
+    // A scoped claim about the CONTENTS. The directory plainly exists and the
+    // answer never said otherwise -- it said there are no tests inside it.
+    const text = "No test files visible in `src/auth/` (only source)."
+    expect(absenceContradictions(text, exists, { strict: true })).toEqual([])
+  })
+
+  test("other containment prepositions are handled too", () => {
+    for (const prep of ["inside", "within", "under"]) {
+      expect(absenceContradictions(`No tests ${prep} \`src/auth\`.`, exists, { strict: true })).toEqual([])
+    }
+  })
+
+  test("but a claim about the path itself still flags", () => {
+    expect(absenceContradictions("`src/auth` is empty.", exists, { strict: true })).toHaveLength(1)
+  })
+
+  test("a rhetorical question is not a success claim", () => {
+    // The splitter cuts at '?', leaving "Tests pass?" alone, which read as an
+    // assertion even though the next sentence said it could not tell.
+    expect(unverifiedSuccessClaim("Tests pass? Can't tell without running them.", false)).toEqual([])
+  })
+
+  test("a question is not an absence claim either", () => {
+    expect(absenceContradictions("Is `src/main.ts` missing?", exists, { strict: true })).toEqual([])
+  })
+
+  test("a question is not a mutation claim either", () => {
+    expect(unbackedMutationClaim("Did I create the `a.ts` file?", 0)).toEqual([])
+  })
+
+  test("the assertive forms still flag", () => {
+    expect(unverifiedSuccessClaim("Tests pass.", false)).toHaveLength(1)
+    expect(unbackedMutationClaim("I created the `a.ts` file.", 0)).toHaveLength(1)
+  })
+})
+
+describe("grounding bare-name citations", () => {
+  test("a bare filename is not resolvable by location", () => {
+    expect(isBareName("cors.go")).toBe(true)
+    expect(isBareName("src/auth/cors.go")).toBe(false)
+  })
+
+  test("existsSomewhere lets a bare name be found where it really lives", () => {
+    // Live finding: an answer cited `cors.go` for a file at
+    // src/auth/internal/middleware/cors.go. Resolving the token against the
+    // worktree root found nothing and reported a phantom citation.
+    const text = "The middleware is in `cors.go`."
+    const withoutOracle = problems(text, evidence(), { checkPaths: true })
+    expect(withoutOracle).toHaveLength(1)
+    const withOracle = problems(text, evidence(), {
+      checkPaths: true,
+      existsSomewhere: (p) => p === "cors.go",
+    })
+    expect(withOracle).toEqual([])
+  })
+
+  test("a genuinely invented name is still caught", () => {
+    expect(
+      problems("See `totally-made-up.ts`.", evidence(), { checkPaths: true, existsSomewhere: () => false }),
+    ).toHaveLength(1)
+  })
+})
+
+describe("grounding success vs absence of tests", () => {
+  test("'no tests exist to pass' is not a success claim", () => {
+    // Live finding: SUCCESS matched `tests ... pass`, and HEDGED cannot carry a
+    // bare "no" because "compiles with no errors" is a real success claim.
+    expect(unverifiedSuccessClaim("No tests exist to pass.", false)).toEqual([])
+    expect(unverifiedSuccessClaim("There are no tests to pass.", false)).toEqual([])
+    expect(unverifiedSuccessClaim('the absence of test files means "tests pass" is vacuously N/A.', false)).toEqual([])
+  })
+
+  test("but 'compiles with no errors' still flags", () => {
+    expect(unverifiedSuccessClaim("It compiles with no errors.", false)).toHaveLength(1)
   })
 })

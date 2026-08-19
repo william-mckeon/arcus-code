@@ -378,27 +378,28 @@ The `small_model` option configures a separate model for lightweight tasks like 
 
 Checks whether the closing answer's claims are backed by what the run actually read and ran. Findings are written to the log; nothing is rewritten.
 
+This runs by default. To turn it off:
+
 ```json title="opencode.json"
 {
   "$schema": "https://opencode.ai/config.json",
-  "grounding": {
-    "enabled": true,
-    "absence_strict": true
-  }
+  "grounding": { "enabled": false }
 }
 ```
 
-The always-on checks are the two that need no citation to work: a claim that a path is missing or empty when it exists, and a claim that a build or test passed when nothing this turn ran one.
-
-Three more are opt-in, because each can be noisy depending on how your model writes:
+Five checks run, each catching a different way an answer can be wrong while sounding right:
 
 | Key | Flags |
 | --- | --- |
-| `check_paths` | A file path cited in the answer that does not exist and was never read |
+| (always) | A path described as missing or empty when it exists |
+| (always) | A build or test described as passing when nothing this turn ran one |
+| `check_paths` | A file cited in the answer that exists nowhere in the project and was never read |
 | `check_web` | A URL cited in the answer that was never fetched |
 | `check_mutations` | A claim that a file was created or changed when nothing was written |
 
 `absence_strict` (default `true`) requires a sentence to actually predicate absence of the path before flagging it, so "I did not open `x`" and "the claim that `x` is missing is incorrect" are left alone. Turning it off catches slightly more and flags slightly more.
+
+A citation written as a bare filename is checked against every file in the project, not just the root, so citing `cors.go` for a file that lives at `src/auth/internal/middleware/cors.go` is correct and is not flagged. That index is built only when an answer actually cites a bare name.
 
 Findings appear as `level=WARN message=grounding`, with the session id and the problems found:
 
