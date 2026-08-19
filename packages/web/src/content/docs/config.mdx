@@ -374,6 +374,38 @@ You can configure the providers and models you want to use in your OpenCode conf
 
 The `small_model` option configures a separate model for lightweight tasks like title generation. By default, OpenCode tries to use a cheaper model if one is available from your provider, otherwise it falls back to your main model.
 
+### Grounding
+
+Checks whether the closing answer's claims are backed by what the run actually read and ran. Findings are written to the log; nothing is rewritten.
+
+```json title="opencode.json"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "grounding": {
+    "enabled": true,
+    "absence_strict": true
+  }
+}
+```
+
+The always-on checks are the two that need no citation to work: a claim that a path is missing or empty when it exists, and a claim that a build or test passed when nothing this turn ran one.
+
+Three more are opt-in, because each can be noisy depending on how your model writes:
+
+| Key | Flags |
+| --- | --- |
+| `check_paths` | A file path cited in the answer that does not exist and was never read |
+| `check_web` | A URL cited in the answer that was never fetched |
+| `check_mutations` | A claim that a file was created or changed when nothing was written |
+
+`absence_strict` (default `true`) requires a sentence to actually predicate absence of the path before flagging it, so "I did not open `x`" and "the claim that `x` is missing is incorrect" are left alone. Turning it off catches slightly more and flags slightly more.
+
+Findings appear as `level=WARN message=grounding`, with the session id and the problems found:
+
+```
+message=grounding session.id=ses_... count=1 problems="'package.json' is described as missing/empty, but the file EXISTS"
+```
+
 If the small model supports reasoning levels, `small_model_variant` picks which one it runs at:
 
 ```json title="opencode.json"

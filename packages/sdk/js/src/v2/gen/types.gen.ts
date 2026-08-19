@@ -1932,6 +1932,13 @@ export type Config = {
   model?: string
   small_model?: string
   small_model_variant?: string
+  grounding?: {
+    enabled?: boolean
+    absence_strict?: boolean
+    check_paths?: boolean
+    check_web?: boolean
+    check_mutations?: boolean
+  }
   default_agent?: string
   subagent_depth?: number
   username?: string

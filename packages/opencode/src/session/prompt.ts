@@ -1,6 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import path from "path"
+import fs from "fs"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
@@ -55,6 +56,8 @@ import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
+import { Grounding } from "./grounding"
+import { GroundingEvidence } from "./grounding/evidence"
 import { LLMEvent, Usage } from "@opencode-ai/llm"
 
 // @ts-ignore
@@ -188,6 +191,67 @@ const layer = Layer.effect(
         { concurrency: "unbounded", discard: true },
       )
       return parts
+    })
+
+    // Grounding gate (log only for now). Verified completion proves the run DID
+    // the work; this asks whether the closing answer's CLAIMS are backed by the
+    // files and commands of this run -- the honest-but-wrong class, where a
+    // real path carries the wrong fact, or something present is called absent.
+    //
+    // It reports and does nothing else. The detectors are ported from a project
+    // whose regexes were tuned against its own models' phrasing, and these run
+    // against different ones, so the first job is to see what it would have
+    // flagged on real sessions before it is allowed to change any output.
+    const checkGrounding = Effect.fn("SessionPrompt.checkGrounding")(function* (input: {
+      sessionID: SessionID
+      message: SessionV1.WithParts | undefined
+    }) {
+      const cfg = yield* config.get()
+      if (!cfg.grounding?.enabled) return
+      if (!input.message) return
+
+      const finalText = input.message.parts
+        .filter((part): part is SessionV1.TextPart => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+        .trim()
+      if (!finalText) return
+
+      const ctx = yield* InstanceState.context
+
+      // Resolved against the worktree, since a citation is written relative to
+      // it. Anything that cannot be resolved reads as "missing", which only
+      // ever makes a check quieter -- an unreadable path is never reported as a
+      // contradiction.
+      const kindOf = (rel: string): Grounding.PathKind => {
+        const full = path.resolve(ctx.worktree, rel)
+        if (!full.startsWith(ctx.worktree)) return "missing"
+        try {
+          const stat = fs.statSync(full)
+          if (stat.isFile()) return "file"
+          if (stat.isDirectory()) return fs.readdirSync(full).length > 0 ? "nonEmptyDirectory" : "missing"
+        } catch {
+          return "missing"
+        }
+        return "missing"
+      }
+
+      const evidence = GroundingEvidence.collect({ parts: input.message.parts, kindOf })
+      const found = Grounding.problems(finalText, evidence, {
+        absenceStrict: cfg.grounding.absence_strict ?? true,
+        checkPaths: cfg.grounding.check_paths ?? false,
+        checkWeb: cfg.grounding.check_web ?? false,
+        checkMutations: cfg.grounding.check_mutations ?? false,
+      })
+      if (found.length === 0) return
+
+      yield* Effect.logWarning("grounding", {
+        "session.id": input.sessionID,
+        count: found.length,
+        // Joined rather than logged per problem: one line per turn keeps the
+        // signal greppable while this is still being calibrated.
+        problems: found.slice(0, 6).join(" | "),
+      })
     })
 
     const title = Effect.fn("SessionPrompt.ensureTitle")(function* (input: {
@@ -1165,6 +1229,7 @@ const layer = Layer.effect(
                 callID: orphan.callID,
               })
             }
+            yield* checkGrounding({ sessionID, message: lastAssistantMsg })
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
           }

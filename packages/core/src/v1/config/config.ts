@@ -81,6 +81,29 @@ export const Info = Schema.Struct({
     description:
       "Variant (reasoning level) for the small model, eg low. When unset, the small model follows whatever variant the main model is using.",
   }),
+  grounding: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Check whether the closing answer's claims are backed by the files and commands of this run. Findings are logged, not acted on.",
+      }),
+      absence_strict: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Require a claim to actually predicate absence of the path before flagging it, and ignore rebuttals such as 'I did not open x'. Fewer false flags, slightly fewer catches.",
+      }),
+      check_paths: Schema.optional(Schema.Boolean).annotate({
+        description: "Flag a file path cited in the answer that does not exist and was never read this run.",
+      }),
+      check_web: Schema.optional(Schema.Boolean).annotate({
+        description: "Flag a URL cited in the answer that was never fetched this run.",
+      }),
+      check_mutations: Schema.optional(Schema.Boolean).annotate({
+        description: "Flag a claim that a file was created or changed when nothing was written this run.",
+      }),
+    }),
+  ).annotate({
+    description: "Checks that the closing answer's claims are grounded in what the run actually read and ran.",
+  }),
   default_agent: Schema.optional(Schema.String).annotate({
     description:
       "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
