@@ -339,3 +339,45 @@ describe("grounding success vs absence of tests", () => {
     expect(unverifiedSuccessClaim("It compiles with no errors.", false)).toHaveLength(1)
   })
 })
+
+// From a live run in a folder holding ten projects, launched from the parent.
+// Eight of eleven flags were the checker being wrong, all from two causes.
+describe("grounding citations relative to a subproject", () => {
+  // The real index is built in prompt.ts; this models its matching rule.
+  const realPaths = [
+    "centpilot/src/auth/internal/middleware/cors.go",
+    "centpilot/src/auth/pkg/jwt/jwt.go",
+    "centpilot/docker/auth/init.sql",
+    "centpilot/docs/AUTH.md",
+  ]
+  const existsSomewhere = (p: string) => realPaths.some((real) => real === p || real.endsWith(`/${p}`))
+
+  test("a path written relative to the project resolves", () => {
+    // The answer reviewed centpilot and wrote `pkg/jwt/jwt.go`. Resolving that
+    // against the launch directory finds nothing, and the file is plainly there.
+    const text = "JWT handling is in `pkg/jwt/jwt.go` and the schema in `docker/auth/init.sql`."
+    expect(problems(text, evidence(), { checkPaths: true, existsSomewhere })).toEqual([])
+  })
+
+  test("a bare filename resolves to where it really lives", () => {
+    expect(problems("CORS is in `cors.go`.", evidence(), { checkPaths: true, existsSomewhere })).toEqual([])
+  })
+
+  test("a suffix must land on a segment boundary", () => {
+    // `uth/jwt.go` is a tail of the string but not of the path, and must not
+    // count -- otherwise any trailing substring would ground a citation.
+    expect(existsSomewhere("uth/jwt.go")).toBe(false)
+    expect(existsSomewhere("auth/pkg/jwt/jwt.go")).toBe(true)
+  })
+
+  test("something that exists nowhere is still caught", () => {
+    expect(problems("See `sst.config.ts`.", evidence(), { checkPaths: true, existsSomewhere })).toHaveLength(1)
+  })
+
+  test("an index that could not be completed yields to the answer", () => {
+    // A partial listing cannot prove absence. Reporting "not found" from one is
+    // the silent-cap mistake this layer exists to catch.
+    const truncated = () => true
+    expect(problems("See `anything.ts`.", evidence(), { checkPaths: true, existsSomewhere: truncated })).toEqual([])
+  })
+})

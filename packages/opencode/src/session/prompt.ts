@@ -223,13 +223,19 @@ const layer = Layer.effect(
 
       const ctx = yield* InstanceState.context
 
-      // Resolved against the worktree, since a citation is written relative to
-      // it. Anything that cannot be resolved reads as "missing", which only
-      // ever makes a check quieter -- an unreadable path is never reported as a
+      // worktree is the literal string "/" for a directory that is not a repo
+      // (project.ts sets it that way for the "global" project), which is a
+      // sentinel, not somewhere to resolve a path against. Resolving citations
+      // against it meant resolving them against the filesystem root: every
+      // relative citation missed, and the index below walked the whole drive.
+      const base = ctx.worktree && ctx.worktree !== "/" ? ctx.worktree : ctx.directory
+
+      // Anything that cannot be resolved reads as "missing", which only ever
+      // makes a check quieter -- an unreadable path is never reported as a
       // contradiction.
       const kindOf = (rel: string): Grounding.PathKind => {
-        const full = path.resolve(ctx.worktree, rel)
-        if (!full.startsWith(ctx.worktree)) return "missing"
+        const full = path.resolve(base, rel)
+        if (!full.startsWith(base)) return "missing"
         try {
           const stat = fs.statSync(full)
           if (stat.isFile()) return "file"
@@ -249,21 +255,45 @@ const layer = Layer.effect(
         kindOf,
       })
 
-      // A citation written as a bare filename cannot be located by resolving it
-      // against the worktree root, so "not found" would be unprovable from the
-      // token alone -- an answer citing `cors.go` for a file that really lives
-      // at src/auth/internal/middleware/cors.go is correct, and calling it a
-      // phantom is the check being wrong. Index basenames once, and only when
-      // an answer actually cites one, so the walk is skipped on nearly every
-      // turn. Bounded, and heavy directories are skipped, because the point is
-      // to answer "does this name exist anywhere" -- not to enumerate the repo.
-      let basenames: Set<string> | undefined
-      const indexBasenames = () => {
-        if (basenames) return basenames
-        const found = new Set<string>()
-        const skip = new Set([".git", "node_modules", "dist", "build", "vendor", ".venv", "target", ".next"])
-        const walk = (dir: string, depth: number) => {
-          if (found.size >= 20000 || depth > 12) return
+      // A citation is not always written relative to where the run started. An
+      // answer reviewing New folder/centpilot writes `pkg/jwt/jwt.go`, and a
+      // bare `cors.go` for a file at src/auth/internal/middleware/cors.go. Both
+      // are correct, and both fail a check that only resolves against one root.
+      //
+      // So index the project's real paths once -- lazily, only when an answer
+      // cites something that did not resolve directly -- and treat a citation
+      // as present when it matches any real path, or is the tail of one on a
+      // segment boundary.
+      const INDEX_CAP = 40000
+      let index: { paths: string[]; truncated: boolean } | undefined
+      const buildIndex = () => {
+        if (index) return index
+        const paths: string[] = []
+        let truncated = false
+        // Dependency and cache trees, which are not the project and are where
+        // the file counts explode. pkg/mod alone held 20k files in the sample.
+        const skip = new Set([
+          ".git",
+          "node_modules",
+          "dist",
+          "build",
+          "vendor",
+          ".venv",
+          "venv",
+          "target",
+          ".next",
+          "__pycache__",
+          ".pytest_cache",
+          ".mypy_cache",
+          ".ruff_cache",
+          "site-packages",
+          ".cache",
+          "coverage",
+          ".turbo",
+          "mod",
+        ])
+        const walk = (dir: string, rel: string, depth: number) => {
+          if (truncated || depth > 16) return
           let entries: fs.Dirent[]
           try {
             entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -271,21 +301,33 @@ const layer = Layer.effect(
             return
           }
           for (const entry of entries) {
-            if (found.size >= 20000) return
+            if (paths.length >= INDEX_CAP) {
+              truncated = true
+              return
+            }
+            const next = rel ? `${rel}/${entry.name}` : entry.name
             if (entry.isDirectory()) {
               if (skip.has(entry.name)) continue
-              walk(path.join(dir, entry.name), depth + 1)
+              walk(path.join(dir, entry.name), next, depth + 1)
             } else {
-              found.add(entry.name)
+              paths.push(next)
             }
           }
         }
-        walk(ctx.worktree, 0)
-        basenames = found
-        return found
+        walk(base, "", 0)
+        index = { paths, truncated }
+        return index
       }
-      const existsSomewhere = (p: string) =>
-        Grounding.isBareName(p) ? indexBasenames().has(p) : kindOf(p) !== "missing"
+      const existsSomewhere = (p: string) => {
+        if (kindOf(p) !== "missing") return true
+        const built = buildIndex()
+        // A truncated index cannot prove absence. Saying "not found" from a
+        // partial listing is exactly the silent-cap mistake this whole layer
+        // exists to catch, so an incomplete walk yields to the answer.
+        if (built.truncated) return true
+        const tail = `/${p}`
+        return built.paths.some((real) => real === p || real.endsWith(tail))
+      }
 
       const found = Grounding.problems(finalText, evidence, {
         existsSomewhere,
