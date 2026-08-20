@@ -1,6 +1,7 @@
 export * as ReadToolFileSystem from "./read-filesystem"
 
 import path from "path"
+import { ToolDiagnostics } from "./diagnostics"
 import { pathToFileURL } from "url"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { FileSystem } from "../filesystem"
@@ -16,9 +17,12 @@ const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
 
 export class BinaryFileError extends Schema.TaggedErrorClass<BinaryFileError>()("ReadTool.BinaryFileError", {
   resource: Schema.String,
+  size: Schema.optional(Schema.Number),
 }) {
   override get message() {
-    return `Cannot read binary file: ${this.resource}`
+    // "Cannot read binary file" never says the file is THERE, and the
+    // omission has been read as absence. See ./diagnostics.
+    return ToolDiagnostics.binaryFile(this.resource, this.size)
   }
 }
 
@@ -213,7 +217,8 @@ export const read = Effect.fn("ReadTool.read")(function* (
         return yield* Effect.fail(new BinaryFileError({ resource }))
       const paged = info.size > MAX_READ_BYTES || page.offset !== undefined || page.limit !== undefined
       if (!paged) {
-        if (binary(resource, first)) return yield* Effect.fail(new BinaryFileError({ resource }))
+        if (binary(resource, first))
+          return yield* Effect.fail(new BinaryFileError({ resource, size: Number(info.size) }))
         const decoder = new TextDecoder("utf-8", { fatal: true })
         const text = [yield* decodeUtf8(resource, decoder, first)]
         while (true) {

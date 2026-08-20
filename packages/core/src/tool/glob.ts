@@ -10,6 +10,7 @@ import { Ripgrep } from "../ripgrep"
 import { RelativePath } from "../schema"
 import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
+import { ToolDiagnostics } from "./diagnostics"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -29,9 +30,12 @@ export const Output = Schema.Array(FileSystem.Entry)
 type ModelOutput = typeof Output.Encoded
 
 /** Format raw search results into the concise line-oriented output models expect. */
-export const toModelOutput = (output: ModelOutput) => {
-  const lines = output.length === 0 ? ["No files found"] : output.map((item) => item.path)
-  return lines.join("\n")
+export const toModelOutput = (output: ModelOutput, query?: { pattern: string; searched: string }) => {
+  // "No files found" cannot distinguish a mis-aimed pattern from an empty
+  // directory, so it gets read as the latter. Name what was searched.
+  if (output.length === 0)
+    return query ? ToolDiagnostics.noFilesMatching(query) : "No files matched the pattern. The directory was searched."
+  return output.map((item) => item.path).join("\n")
 }
 
 /** Glob leaf that defaults its filesystem root to the active Location. */
@@ -49,11 +53,12 @@ const layer = Layer.effectDiscard(
             "Find files by glob pattern within the active Location. Returns concise relative file resources. Use a relative path to narrow the search and limit to bound the result count.",
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [
+          toModelOutput: ({ input, output }) => [
             {
               type: "text",
               text: toModelOutput(
                 output.map((entry) => ({ ...entry, path: path.resolve(location.directory, entry.path) })),
+                { pattern: input.pattern, searched: path.resolve(location.directory, input.path ?? ".") },
               ),
             },
           ],

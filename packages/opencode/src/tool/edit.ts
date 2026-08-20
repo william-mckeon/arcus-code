@@ -6,6 +6,7 @@
 import * as path from "path"
 import { Effect, Schema, Semaphore } from "effect"
 import * as Tool from "./tool"
+import { ToolDiagnostics } from "@opencode-ai/core/tool/diagnostics"
 import { LSP } from "@/lsp/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
@@ -121,7 +122,19 @@ export const EditTool = Tool.define(
               }
 
               const info = yield* afs.stat(filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
-              if (!info) throw new Error(`File ${filePath} not found`)
+              if (!info) {
+                // Same neighbours read offers. A miss here used to be a bare
+                // "not found", so whether a typo was recoverable depended on
+                // which tool happened to hit it first.
+                const dir = path.dirname(filePath)
+                const nearby = yield* afs.readDirectory(dir).pipe(
+                  Effect.map((entries) =>
+                    ToolDiagnostics.nearby(entries, path.basename(filePath)).map((item) => path.join(dir, item)),
+                  ),
+                  Effect.catch(() => Effect.succeed([] as string[])),
+                )
+                throw new Error(ToolDiagnostics.fileNotFound(filePath, nearby))
+              }
               if (info.type === "Directory") throw new Error(`Path is a directory, not a file: ${filePath}`)
               const source = yield* Bom.readFile(afs, filePath)
               contentOld = source.text

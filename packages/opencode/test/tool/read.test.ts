@@ -592,7 +592,10 @@ describe("tool.read binary detection", () => {
       yield* put(path.join(dir, "null-byte.txt"), bytes)
 
       const err = yield* fail(dir, { filePath: path.join(dir, "null-byte.txt") })
-      expect(err.message).toContain("Cannot read binary file")
+      // The message must place the file as present, not merely unreadable:
+      // "cannot read" alone has been taken to mean the file was absent.
+      expect(err.message).toContain("exists")
+      expect(err.message).toContain("not a missing file")
     }),
   )
 
@@ -602,7 +605,8 @@ describe("tool.read binary detection", () => {
       yield* put(path.join(dir, "module.wasm"), "not really wasm")
 
       const err = yield* fail(dir, { filePath: path.join(dir, "module.wasm") })
-      expect(err.message).toContain("Cannot read binary file")
+      expect(err.message).toContain("exists")
+      expect(err.message).toContain("not a missing file")
     }),
   )
 })

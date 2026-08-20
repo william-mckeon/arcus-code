@@ -9,6 +9,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
 import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
+import { ToolDiagnostics } from "@opencode-ai/core/tool/diagnostics"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -77,25 +78,11 @@ export const ReadTool = Tool.define<
       const dir = path.dirname(filepath)
       const base = path.basename(filepath)
       const items = yield* fs.readDirectory(dir).pipe(
-        Effect.map((items) =>
-          items
-            .filter(
-              (item) =>
-                item.toLowerCase().includes(base.toLowerCase()) || base.toLowerCase().includes(item.toLowerCase()),
-            )
-            .map((item) => path.join(dir, item))
-            .slice(0, 3),
-        ),
+        Effect.map((entries) => ToolDiagnostics.nearby(entries, base).map((item) => path.join(dir, item))),
         Effect.catch(() => Effect.succeed([] as string[])),
       )
 
-      if (items.length > 0) {
-        return yield* Effect.fail(
-          new Error(`File not found: ${filepath}\n\nDid you mean one of these?\n${items.join("\n")}`),
-        )
-      }
-
-      return yield* Effect.fail(new Error(`File not found: ${filepath}`))
+      return yield* Effect.fail(new Error(ToolDiagnostics.fileNotFound(filepath, items)))
     })
 
     const list = Effect.fn("ReadTool.list")(function* (filepath: string) {
@@ -325,7 +312,7 @@ export const ReadTool = Tool.define<
       }
 
       if (isBinaryFile(filepath, sample)) {
-        return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
+        return yield* Effect.fail(new Error(ToolDiagnostics.binaryFile(filepath, Number(stat.size))))
       }
 
       const file = yield* lines(filepath, { limit: params.limit ?? DEFAULT_READ_LIMIT, offset: params.offset || 1 })

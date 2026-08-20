@@ -504,7 +504,7 @@ describe("ReadTool", () => {
             input: { path: "archive.dat", offset: 2, limit: 1 },
           },
         }),
-      ).toEqual({ type: "error", value: "Cannot read binary file: archive.dat" })
+      ).toMatchObject({ type: "error", value: expect.stringContaining("archive.dat exists") })
       expect(readCalls).toEqual([
         { input: AbsolutePath.make(path.join(process.cwd(), "archive.dat")), page: { offset: 2, limit: 1 } },
       ])
@@ -668,7 +668,7 @@ describe("ReadTool", () => {
           ...toolIdentity,
           call: { type: "tool-call", id: "call-direct-binary", name: "read", input: { path: "late-binary" } },
         }),
-      ).toEqual({ type: "error", value: "Cannot read binary file: late-binary" })
+      ).toMatchObject({ type: "error", value: expect.stringContaining("late-binary exists") })
     }),
   )
 })

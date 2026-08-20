@@ -11,6 +11,7 @@ import { PermissionV2 } from "../permission"
 import { Ripgrep } from "../ripgrep"
 import { RelativePath } from "../schema"
 import { ToolRegistry } from "./registry"
+import { ToolDiagnostics } from "./diagnostics"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -35,8 +36,13 @@ export const Output = Schema.Array(FileSystem.Match)
 type ModelOutput = typeof Output.Encoded
 
 /** Format raw search matches into the familiar concise model output. */
-export const toModelOutput = (output: ModelOutput) => {
-  const lines = output.length === 0 ? ["No files found"] : [`Found ${output.length} matches`]
+export const toModelOutput = (output: ModelOutput, query?: { pattern: string; searched: string; include?: string }) => {
+  // An empty result has to say the pattern did not match, not that no files
+  // exist -- the old "No files found" named the wrong noun and read as a
+  // claim about the repository rather than about the search.
+  if (output.length === 0)
+    return query ? ToolDiagnostics.noMatches(query) : "No matches. The search ran and the pattern did not match."
+  const lines = [`Found ${output.length} matches`]
   let current = ""
   for (const match of output) {
     if (current !== match.entry.path) {
@@ -65,7 +71,7 @@ const layer = Layer.effectDiscard(
             "Search file contents by regular expression within the active Location or an absolute managed tool-output file. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [
+          toModelOutput: ({ input, output }) => [
             {
               type: "text",
               text: toModelOutput(
@@ -73,6 +79,11 @@ const layer = Layer.effectDiscard(
                   ...match,
                   entry: { ...match.entry, path: path.resolve(location.directory, match.entry.path) },
                 })),
+                {
+                  pattern: input.pattern,
+                  searched: path.resolve(location.directory, input.path ?? "."),
+                  include: input.include,
+                },
               ),
             },
           ],

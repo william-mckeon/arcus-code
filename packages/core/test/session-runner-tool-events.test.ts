@@ -104,7 +104,7 @@ test("binary failure emits no success event", async () => {
       LLMEvent.toolResult({
         id: call.id,
         name: call.name,
-        result: { type: "error", value: "Cannot read binary file" },
+        result: { type: "error", value: "Cannot read binary file" }, // fixture text, not produced by the read tool
       }),
     ),
   )
