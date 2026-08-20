@@ -381,3 +381,34 @@ describe("grounding citations relative to a subproject", () => {
     expect(problems("See `anything.ts`.", evidence(), { checkPaths: true, existsSomewhere: truncated })).toEqual([])
   })
 })
+
+// Live finding: a false completion claim about `never.txt` was let through
+// because the FILENAME contains "never" and the negation guard read it as an
+// honest denial. A filename is not prose.
+describe("grounding filenames are not prose", () => {
+  test("a filename containing a negation word does not excuse the claim", () => {
+    expect(unbackedMutationClaim("I created the file `never.txt` in the working directory.", 0)).toHaveLength(1)
+    expect(unbackedMutationClaim("I created `no-op.ts`.", 0)).toHaveLength(1)
+  })
+
+  test("a real negation in the prose still excuses it", () => {
+    expect(unbackedMutationClaim("I never created `a.ts`.", 0)).toEqual([])
+    expect(unbackedMutationClaim("No files were created.", 0)).toEqual([])
+  })
+
+  test("a filename containing a mutation verb is not a claim", () => {
+    // "deleted-rows.md" holds the verb, but nothing here says the run did it.
+    expect(unbackedMutationClaim("The schema is documented in `deleted-rows.md`.", 0)).toEqual([])
+  })
+
+  test("a filename containing a success word is not a success claim", () => {
+    expect(unverifiedSuccessClaim("The fixture lives in `test-pass.ts`.", false)).toEqual([])
+  })
+
+  test("a filename containing a rebuttal word does not suppress an absence flag", () => {
+    // ABSENCE_META looks for words like "claim"; a file named claim.ts must not
+    // silence a genuine false-absence report about it.
+    const exists = kindOf({ "claim.ts": "file" })
+    expect(absenceContradictions("`claim.ts` is missing.", exists, { strict: true })).toHaveLength(1)
+  })
+})

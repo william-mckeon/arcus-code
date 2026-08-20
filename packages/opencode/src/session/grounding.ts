@@ -143,6 +143,17 @@ const sentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/)
 // splitter cuts at the question mark and leaves "Tests pass?" standing alone.
 const isQuestion = (sentence: string) => sentence.trim().endsWith("?")
 
+// A filename is not prose. `never.txt` contains "never", and a live run used
+// exactly that name: the negation guard read the filename as an honest denial
+// and let a false completion claim through. `deleted-rows.md` would trip the
+// mutation verb, `test-pass.ts` the success net.
+//
+// So claim and guard patterns are matched against the sentence with quoted
+// spans removed. Patterns that need the citation itself -- FILE_REF, which
+// looks for a quoted filename, and the quoted-token branch of ABSENCE -- keep
+// the original text.
+const prose = (sentence: string) => sentence.replace(/[`'"][^`'"\n]*[`'"]/g, " ")
+
 // The path is being described as a CONTAINER of something absent rather than
 // absent itself: "no test files in `src/auth`" says nothing about whether
 // src/auth exists, so reporting it as "described as empty" is simply wrong.
@@ -182,7 +193,7 @@ export function absenceContradictions(
     // In strict mode require a real absence predicate and no rebuttal marker,
     // so "I did not open `X`" and "the claim that `X` is missing is incorrect"
     // stop producing phantom flags.
-    if (options.strict && (!ABSENCE_PREDICATE.test(sent) || ABSENCE_META.test(sent))) continue
+    if (options.strict && (!ABSENCE_PREDICATE.test(prose(sent)) || ABSENCE_META.test(prose(sent)))) continue
     for (const p of citedPaths(sent, false)) {
       // BROAD on purpose: a bare directory citation must count too.
       if (!claimsPathIsAbsent(sent, p)) continue
@@ -227,6 +238,21 @@ export const CHECK_CMD =
 const SUCCESS_ABSENT =
   /\b(?:no|zero)\s+(?:\w+\s+){0,2}tests?\b|\bthere\s+(?:are|were)\s+no\s+tests?\b|\bnothing\s+to\s+(?:test|run)\b|\bvacuous(?:ly)?\b|\bn\/a\b/i
 
+// A shell command that can create or change a file. Files get written by shell
+// far more often than by the write tool -- a live run created a file with a
+// redirect, said so truthfully, and was told nothing had been written.
+//
+// The bias here is the opposite of CHECK_CMD's. Over-matching costs a missed
+// catch; under-matching accuses the answer of lying about work it actually did.
+// So a redirect anywhere counts, even into /dev/null, because the cost of
+// counting it is only silence.
+const WRITE_CMD =
+  /(?<!\|)>>?|\btee\b|\b(?:cp|mv|rm|mkdir|touch|truncate|install|ln)\b|\bsed\b[^|]*-i|\bgit\s+(?:apply|checkout|restore|clean|mv|rm)\b|\bpatch\b|\bdd\b|\b(?:Set|Add|Clear)-Content\b|\bOut-File\b|\b(?:New|Copy|Move|Remove|Rename)-Item\b/i
+
+export function writesFiles(command: string | undefined) {
+  return WRITE_CMD.test(command ?? "")
+}
+
 export function ranCheck(command: string | undefined) {
   return CHECK_CMD.test(command ?? "")
 }
@@ -239,7 +265,8 @@ export function unverifiedSuccessClaim(finalText: string | undefined, verified: 
   if (!finalText || verified) return []
   for (const sent of sentences(finalText)) {
     if (isQuestion(sent)) continue
-    if (!SUCCESS.test(sent) || HEDGED.test(sent) || SUCCESS_ABSENT.test(sent)) continue
+    const said = prose(sent)
+    if (!SUCCESS.test(said) || HEDGED.test(said) || SUCCESS_ABSENT.test(said)) continue
     return [
       "you state a build, test or check succeeded, but nothing this turn ran one -- run the check, or say plainly that it has not been run",
     ]
@@ -273,9 +300,11 @@ export function unbackedMutationClaim(finalText: string | undefined, mutationCou
   if (!finalText || mutationCount > 0) return []
   for (const sent of sentences(finalText)) {
     if (isQuestion(sent)) continue
-    if (!(MUTATION_DONE.test(sent) && FILE_REF.test(sent))) continue
-    if (HEDGED.test(sent) || MUT_NEGATED.test(sent)) continue
-    if (!(MUT_FIRST_PERSON.test(sent) || MUT_DIRECTIONAL.test(sent))) continue
+    // FILE_REF keeps the original: it looks for the quoted filename itself.
+    const said = prose(sent)
+    if (!(MUTATION_DONE.test(said) && FILE_REF.test(sent))) continue
+    if (HEDGED.test(said) || MUT_NEGATED.test(said)) continue
+    if (!(MUT_FIRST_PERSON.test(said) || MUT_DIRECTIONAL.test(said))) continue
     return [
       "you state you created, copied or changed a file this run, but nothing was written, edited or deleted -- make the change, or say plainly that nothing changed",
     ]

@@ -74,3 +74,40 @@ describe("grounding evidence", () => {
     expect([...e.touched]).toEqual(["a.ts"])
   })
 })
+
+// Live finding: a run created a file with a shell redirect, said "I created the
+// file `made.txt`" -- which was true -- and was told nothing had been written.
+describe("grounding evidence from shell writes", () => {
+  test("a redirect counts as a mutation", () => {
+    expect(collect([toolPart("bash", { command: "echo done > made.txt" })]).mutations).toBe(1)
+  })
+
+  test("common file-writing commands count", () => {
+    for (const cmd of ["cp a b", "mv a b", "touch x", "mkdir -p y", "tee out.txt", "sed -i s/a/b/ f"]) {
+      expect(collect([toolPart("bash", { command: cmd })]).mutations).toBe(1)
+    }
+  })
+
+  test("PowerShell forms count too", () => {
+    for (const cmd of ["Set-Content x.txt 'hi'", "New-Item -ItemType File z", "Out-File -FilePath a.txt"]) {
+      expect(collect([toolPart("bash", { command: cmd })]).mutations).toBe(1)
+    }
+  })
+
+  test("a read-only command does not", () => {
+    for (const cmd of ["git status", "ls -la", "cat file.txt", "grep foo bar"]) {
+      expect(collect([toolPart("bash", { command: cmd })]).mutations).toBe(0)
+    }
+  })
+
+  test("a failed command is not a mutation", () => {
+    expect(collect([toolPart("bash", { command: "echo x > y" }, "error")]).mutations).toBe(0)
+  })
+
+  test("a command can both check and write", () => {
+    // "bun test > out.log" verifies AND writes; both must be recorded.
+    const e = collect([toolPart("bash", { command: "bun test > out.log" })])
+    expect(e.verified).toBe(true)
+    expect(e.mutations).toBe(1)
+  })
+})

@@ -8,7 +8,7 @@ export * as GroundingEvidence from "./evidence"
 // the detectors stay portable and this stays small.
 
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
-import { norm, ranCheck, type Evidence, type PathKind } from "../grounding"
+import { norm, ranCheck, writesFiles, type Evidence, type PathKind } from "../grounding"
 
 // Tools whose ARGUMENTS name a specific file. Deliberately excludes glob, grep
 // and list: those enumerate many paths into a result body that is capped and
@@ -77,9 +77,15 @@ export function collect(input: {
       if (url) fetched.add(url)
     }
 
-    // A check that completed is a check that exited 0 -- the tool reports a
-    // non-zero exit as an error state, which the status guard above excludes.
-    if (part.tool === "bash" && ranCheck(toolCommand(part))) verified = true
+    if (part.tool === "bash") {
+      const command = toolCommand(part)
+      // A check that completed is a check that exited 0 -- the tool reports a
+      // non-zero exit as an error state, which the status guard above excludes.
+      if (ranCheck(command)) verified = true
+      // Shell is how most files actually get written. Without this a truthful
+      // "I created the file" after a redirect was reported as unbacked.
+      if (writesFiles(command)) mutations++
+    }
   }
 
   return { touched, fetched, mutations, verified, kindOf: input.kindOf }
