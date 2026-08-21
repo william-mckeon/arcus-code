@@ -20,12 +20,23 @@ export * as Grounding from "./grounding"
 
 // A path-like token in the answer. Backslash is included so a Windows-style
 // citation `src\main.ts` is seen at all -- norm() folds it to '/'.
-const QUOTED = /[`'"]([A-Za-z0-9_.\-/\\]+)[`'"]/g
+//
+// Spaces are admitted because real folders have them. Without them the BROAD
+// tier could not see `resume helper`, `messing with OAC` or `open source` --
+// the three citations a directory-level answer leaned on hardest -- so the
+// whole layer passed vacuously on a session whose answer was wrong.
+// A quoted sentence can slip through; WORD_CAP turns most away, and the rest
+// are harmless because the only BROAD consumer speaks just when the cited
+// path EXISTS on disk, which prose does not.
+const QUOTED = /[`'"]([A-Za-z0-9_.\-/\\][A-Za-z0-9_.\-/\\ ]{0,80})[`'"]/g
+
+// A path is a few words at most. Beyond this it is a quoted phrase.
+const WORD_CAP = 5
 
 // Known code/doc extensions -- the NARROW tier, used where a hard existence
 // check runs with no model to sanity-check it.
-const EXT = /\.(py|js|ts|tsx|jsx|go|rs|java|rb|c|h|cpp|md|ya?ml|json|toml|sql|sh|txt|env|conf|cfg|ini|lock|xml|html|css)$/i
-const ANYEXT = /\.[A-Za-z0-9]{1,8}$/ // any file-ish extension -- BROAD tier
+const EXT =
+  /\.(py|js|ts|tsx|jsx|go|rs|java|rb|c|h|cpp|md|ya?ml|json|toml|sql|sh|txt|env|conf|cfg|ini|lock|xml|html|css)$/i
 const DOMAIN = /^[A-Za-z0-9][A-Za-z0-9-]*\.[A-Za-z]{2,}$/ // github.com, example.io
 const DATE = /^\d{1,4}([/-]\d{1,4}){2}$/ // 2024/01/15
 
@@ -73,12 +84,15 @@ export function citedPaths(finalText: string | undefined, strict = false) {
     if (raw.replace(/\\/g, "/").trim().startsWith("/")) continue // absolute -- not judgeable
     const p = norm(raw)
     if (!p || p === "." || p === "..") continue
+    if (p.split(" ").length > WORD_CAP) continue // a quoted phrase, not a path
     if (strict) {
       if (!EXT.test(p) && !NOEXT_FILES.test(p)) continue
       if (DATE.test(p) || (p.includes("/") && DOMAIN.test(p.split("/", 1)[0]))) continue
-    } else if (!p.includes("/") && !ANYEXT.test(p)) {
-      continue
     }
+    // BROAD deliberately keeps a bare name: `boenet` and `resume helper` are
+    // directory citations, and dropping them is what blinded the layer. The
+    // one detector consuming this tier only speaks when the path EXISTS, so a
+    // stray quoted word costs nothing.
     out.add(p)
   }
   return [...out]

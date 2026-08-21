@@ -10,6 +10,7 @@ import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { AppRuntime } from "./effect/app-runtime"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { DebugCommand } from "./cli/cmd/debug"
@@ -138,5 +139,13 @@ try {
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
   // run using `docker run --init`.
   // Explicitly exit to avoid any hanging subprocesses.
+  //
+  // Flush first. The file logger batches its writes and only drains when its
+  // scope closes, so exiting straight from here discarded the tail of every
+  // short-lived run: of 108 runs in one log file only 24 had recorded their
+  // own exit, and the lost tail is where the `usage` cost lines live. Bounded,
+  // because the hard exit above exists to defeat subprocesses that ignore
+  // signals -- a flush must not reintroduce the hang it was written to stop.
+  await Promise.race([AppRuntime.dispose().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 750))])
   process.exit()
 }

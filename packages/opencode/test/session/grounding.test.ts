@@ -213,7 +213,9 @@ describe("grounding.deterministicProblems", () => {
 
 describe("grounding.problems", () => {
   test("clean answer produces nothing", () => {
-    expect(problems("I read `src/a.ts` and it handles the retry.", evidence({ kindOf: kindOf({ "src/a.ts": "file" }) }))).toEqual([])
+    expect(
+      problems("I read `src/a.ts` and it handles the retry.", evidence({ kindOf: kindOf({ "src/a.ts": "file" }) })),
+    ).toEqual([])
   })
 
   test("catches the false-absence class end to end", () => {
@@ -410,5 +412,66 @@ describe("grounding filenames are not prose", () => {
     // silence a genuine false-absence report about it.
     const exists = kindOf({ "claim.ts": "file" })
     expect(absenceContradictions("`claim.ts` is missing.", exists, { strict: true })).toHaveLength(1)
+  })
+})
+
+// Live finding, 2026-08-20 (session ses_fded47f6): the layer ran three times on
+// a session whose answer was materially wrong and said nothing, because the
+// citation extractor could not see the folder names the answer was built on.
+// `messing with OAC` was described as holding the careeragent source; the
+// directory holds 11 files and no .py at all.
+describe("grounding.citedPaths — directory citations", () => {
+  test("a folder name with spaces is extracted", () => {
+    // The old QUOTED class had no space, so these three were invisible and the
+    // whole run had an empty citation set to judge.
+    expect(citedPaths("`resume helper` is empty").sort()).toEqual(["resume helper"])
+    expect(citedPaths("the work is in `messing with OAC`")).toEqual(["messing with OAC"])
+    expect(citedPaths("`open source` has nothing in it")).toEqual(["open source"])
+  })
+
+  test("a bare directory name with no slash and no extension is extracted", () => {
+    // The BROAD tier dropped these against its own call-site comment, which
+    // said in so many words that a bare directory citation must count.
+    expect(citedPaths("`boenet` and `models` are empty").sort()).toEqual(["boenet", "models"])
+  })
+
+  test("the narrow tier still refuses a bare name", () => {
+    // NARROW backs a hard existence check with no model to catch its mistakes,
+    // so it must stay conservative -- widening was only ever about BROAD.
+    expect(citedPaths("`boenet` and `models`", true)).toEqual([])
+  })
+
+  test("a quoted sentence is not mistaken for a path", () => {
+    expect(citedPaths('"you are getting ahead of your self"')).toEqual([])
+    expect(citedPaths("`this is a quoted phrase of many words`")).toEqual([])
+  })
+
+  test("a short quoted phrase may slip through, and that is acceptable", () => {
+    // It only reaches a detector that speaks when the path EXISTS on disk, so
+    // a phrase that names nothing real can never produce a finding.
+    expect(citedPaths("`just assess`")).toEqual(["just assess"])
+  })
+
+  test("URLs, scoped packages and absolute paths are still excluded", () => {
+    expect(citedPaths("`https://x.dev/a b` `@scope/pkg name` `/etc/some file`")).toEqual([])
+  })
+})
+
+describe("grounding.absenceContradictions — directory claims", () => {
+  const kind = (map: Record<string, PathKind>) => (p: string) => map[p] ?? "missing"
+
+  test("a directory said to be empty that contains files is flagged", () => {
+    const out = absenceContradictions(
+      "The `messing with OAC` folder is empty.",
+      kind({ "messing with OAC": "nonEmptyDirectory" }),
+    )
+    expect(out.length).toBe(1)
+    expect(out[0]).toContain("messing with OAC")
+  })
+
+  test("a directory said to be empty that really is empty is left alone", () => {
+    // `boenet` holds one empty subdirectory and zero files. Counting entries
+    // called it non-empty, which would have accused a correct answer of lying.
+    expect(absenceContradictions("`boenet` is empty.", kind({ boenet: "missing" }))).toEqual([])
   })
 })

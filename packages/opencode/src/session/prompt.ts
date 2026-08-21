@@ -233,13 +233,30 @@ const layer = Layer.effect(
       // Anything that cannot be resolved reads as "missing", which only ever
       // makes a check quieter -- an unreadable path is never reported as a
       // contradiction.
+      // "Contains files" has to mean FILES, not entries. `boenet/` holds a
+      // single empty subdirectory: counting entries called it non-empty, which
+      // would turn a truthful "boenet is empty" into a confident accusation that
+      // the answer lied. Bounded, and biased to say NO when it cannot tell --
+      // a missed catch is far cheaper than telling the user a correct answer
+      // was wrong.
+      const hasFiles = (dir: string, depth = 0): boolean => {
+        if (depth > 6) return false
+        let entries: import("fs").Dirent[]
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true })
+        } catch {
+          return false
+        }
+        if (entries.some((e) => e.isFile())) return true
+        return entries.some((e) => e.isDirectory() && hasFiles(path.join(dir, e.name), depth + 1))
+      }
       const kindOf = (rel: string): Grounding.PathKind => {
         const full = path.resolve(base, rel)
         if (!full.startsWith(base)) return "missing"
         try {
           const stat = fs.statSync(full)
           if (stat.isFile()) return "file"
-          if (stat.isDirectory()) return fs.readdirSync(full).length > 0 ? "nonEmptyDirectory" : "missing"
+          if (stat.isDirectory()) return hasFiles(full) ? "nonEmptyDirectory" : "missing"
         } catch {
           return "missing"
         }
@@ -336,7 +353,22 @@ const layer = Layer.effect(
         checkWeb: cfg.grounding?.check_web ?? true,
         checkMutations: cfg.grounding?.check_mutations ?? true,
       })
-      if (found.length === 0) return
+      // A clean pass and a VACUOUS one looked identical in the log: silence.
+      // That is how a session whose answer was wrong went three turns without a
+      // word from this layer -- the citation extractor saw nothing, so there was
+      // nothing to judge. Record what was actually examined, so "found no
+      // problems" can be told apart from "had nothing to look at".
+      if (found.length === 0) {
+        yield* Effect.logInfo("grounding", {
+          "session.id": input.sessionID,
+          outcome: "clean",
+          citations: Grounding.citedPaths(finalText).length,
+          urls: Grounding.citedUrls(finalText).length,
+          touched: evidence.touched.size,
+          mutations: evidence.mutations,
+        })
+        return
+      }
 
       yield* Effect.logWarning("grounding", {
         "session.id": input.sessionID,
