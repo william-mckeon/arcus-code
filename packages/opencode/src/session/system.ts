@@ -48,6 +48,19 @@ export function provider(model: Provider.Model) {
   return [PROMPT_DEFAULT]
 }
 
+/**
+ * The wall-clock date, as a block meant for the END of the system prompt.
+ *
+ * It used to sit inside <env>, which is the FIRST thing in the prompt -- so
+ * every day at midnight the first bytes of the cached prefix changed and the
+ * whole prompt cache was thrown away. A prefix cache matches from the front,
+ * so anything that varies has to go last or the stable text behind it is worth
+ * nothing. Keeping the date matters: without it the model answers relative-time
+ * questions from whatever year its training data ended in.
+ */
+export function now(date = new Date()) {
+  return [`<now>`, `  Today's date: ${date.toDateString()}`, `</now>`].join("\n")
+}
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
@@ -78,7 +91,6 @@ const layer = Layer.effect(
             `  Workspace root folder: ${ctx.worktree}`,
             `  Is directory a git repo: ${ctx.project.vcs === "git" ? "yes" : "no"}`,
             `  Platform: ${process.platform}`,
-            `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
           ].join("\n"),
           references.length === 0

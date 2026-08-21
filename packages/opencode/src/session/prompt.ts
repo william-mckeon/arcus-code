@@ -1508,6 +1508,10 @@ const layer = Layer.effect(
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
+              // Last on purpose. This is the only part of the system prompt that
+              // changes on its own, and a prefix cache matches from the front, so
+              // anything ahead of it would be re-sent every midnight.
+              SystemPrompt.now(),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

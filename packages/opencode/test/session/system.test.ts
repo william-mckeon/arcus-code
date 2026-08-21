@@ -166,3 +166,27 @@ describe("session.system", () => {
     }),
   )
 })
+
+// A prompt cache matches from the FRONT, so anything in the prompt that varies
+// on its own has to sit last or every stable byte behind it is re-sent. The
+// wall-clock date used to live inside <env>, which is the very first block --
+// guaranteeing a full re-send every midnight, at roughly the cost of a whole
+// uncached step.
+describe("session.system.now", () => {
+  test("renders the date", () => {
+    expect(SystemPrompt.now(new Date("2026-08-20T12:00:00Z"))).toContain("Aug 20 2026")
+  })
+
+  test("is a self-contained block, so it can be appended anywhere", () => {
+    const text = SystemPrompt.now(new Date("2026-08-20T12:00:00Z"))
+    expect(text.startsWith("<now>")).toBe(true)
+    expect(text.trimEnd().endsWith("</now>")).toBe(true)
+  })
+
+  test("the date is still delivered, not merely removed", () => {
+    // The cheap way to stop the cache breaking is to drop the date entirely,
+    // which leaves the model answering relative-time questions from whenever
+    // its training data ended. This asserts the fix was the other one.
+    expect(SystemPrompt.now()).toMatch(/\w{3} \w{3} \d{1,2} \d{4}/)
+  })
+})

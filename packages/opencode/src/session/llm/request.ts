@@ -214,8 +214,15 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
             "User-Agent": USER_AGENT,
           }
         : {
-            "x-session-affinity": input.sessionID,
-            "X-Session-Id": input.sessionID,
+            // No session-affinity headers. They were sent to every non-opencode
+            // provider and read as though sticky routing were handled, which is
+            // what made prompt-cache misses look investigated when they were
+            // not. Together documents caching as automatic with "no header,
+            // parameter, or account toggle to enable it"; its serverless cache
+            // is shared across the fleet and evicted as traffic shifts, so hits
+            // are not guaranteed and nothing we can send changes that. The
+            // remedy is a dedicated endpoint, where the cache is scoped to your
+            // own replicas -- an account decision, not a request header.
             ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
             "User-Agent": USER_AGENT,
           }),
