@@ -167,3 +167,32 @@ describe("grounding evidence — directory listings", () => {
     }
   })
 })
+
+// Phase 3. The presence detector fires when an answer describes a directory the
+// run never enumerated; tree is the one call that enumerates one. Without this
+// the agent would be easier to CATCH than to satisfy, which is the wrong way
+// round -- the tool exists so "look before you describe" costs one call.
+describe("grounding evidence — tree", () => {
+  test("a tree of a path counts as listing that path", () => {
+    const e = collect([toolPart("tree", { path: "packages/core" })])
+    expect([...e.listed]).toContain("packages/core")
+  })
+
+  test("a tree with no path counts as enumerating the workspace", () => {
+    // The directory check stands down entirely on this, since everything was
+    // mapped and no claim about a directory can be unsupported.
+    const e = collect([toolPart("tree", {})])
+    expect([...e.listed]).toContain("")
+  })
+
+  test("a tree is not a mutation and does not mark the turn verified", () => {
+    const e = collect([toolPart("tree", { path: "src" })])
+    expect(e.mutations).toBe(0)
+    expect(e.verified).toBe(false)
+  })
+
+  test("a failed tree proves nothing", () => {
+    const e = collect([toolPart("tree", { path: "src" }, "error")])
+    expect([...e.listed]).toEqual([])
+  })
+})

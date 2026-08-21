@@ -83,6 +83,14 @@ export function collect(input: { parts: readonly SessionV1.Part[]; kindOf: (path
       if (p !== undefined && input.kindOf(p) !== "file") listed.add(p)
     }
 
+    // A tree maps a whole subtree in one call, so it is the strongest listing
+    // evidence there is -- and the cheapest way for a run to earn the right to
+    // describe a directory. With no path it maps the workspace root, which the
+    // directory check reads as "everything was enumerated".
+    if (part.tool === "tree") {
+      listed.add(toolPaths(part) ?? "")
+    }
+
     // A glob enumerates whatever its path or its literal pattern prefix names.
     if (part.tool === "glob") {
       const scoped = toolPaths(part)

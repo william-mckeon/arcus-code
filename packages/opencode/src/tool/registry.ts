@@ -7,6 +7,7 @@ import { QuestionTool } from "./question"
 import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
+import { TreeTool } from "./tree"
 import { GrepTool } from "./grep"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
@@ -117,6 +118,7 @@ const layer = Layer.effect(
     const websearch = yield* WebSearchTool
     const shell = yield* ShellTool
     const globtool = yield* GlobTool
+    const treetool = yield* TreeTool
     const writetool = yield* WriteTool
     const edit = yield* EditTool
     const greptool = yield* GrepTool
@@ -219,6 +221,7 @@ const layer = Layer.effect(
           shell: Tool.init(shell),
           read: Tool.init(read),
           glob: Tool.init(globtool),
+          tree: Tool.init(treetool),
           grep: Tool.init(greptool),
           edit: Tool.init(edit),
           write: Tool.init(writetool),
@@ -241,6 +244,7 @@ const layer = Layer.effect(
             ...(questionEnabled ? [tool.question] : []),
             tool.shell,
             tool.read,
+            tool.tree,
             tool.glob,
             tool.grep,
             tool.edit,
