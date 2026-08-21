@@ -159,6 +159,23 @@ describe("event compaction", () => {
     expect(database.query(`SELECT COUNT(*) n FROM event`).get()).toEqual({ n: 1 })
   })
 
+  test("runs inside a transaction with foreign keys on", () => {
+    // The conditions it actually ships under: migrations run inside
+    // db.transaction(...) and database.ts sets PRAGMA foreign_keys = ON. Temp
+    // tables and a cascading reference both behave differently there, and the
+    // other tests here run the statements bare.
+    const database = db()
+    put(database, "ses_a", 1, PART_UPDATED, partUpdate("prt_1", "running", "x"))
+    put(database, "ses_a", 2, PART_UPDATED, partUpdate("prt_1", "completed", "y"))
+    database.run("PRAGMA foreign_keys = ON")
+    database.run("BEGIN")
+    for (const statement of STATEMENTS) database.run(statement)
+    database.run("COMMIT")
+    expect(database.query(`SELECT COUNT(*) n FROM event`).get()).toEqual({ n: 1 })
+    // The cascade must not have taken the aggregate with it.
+    expect(database.query(`SELECT COUNT(*) n FROM event_sequence`).get()).toEqual({ n: 1 })
+  })
+
   test("an empty table is not an error", () => {
     const database = db()
     expect(() => compact(database)).not.toThrow()
