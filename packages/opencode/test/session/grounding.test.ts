@@ -12,6 +12,7 @@ import {
   problems,
   ranCheck,
   unbackedMutationClaim,
+  unlistedDirectoryClaims,
   unverifiedSuccessClaim,
   webCitationProblems,
   type Evidence,
@@ -26,6 +27,8 @@ const kindOf =
 const evidence = (over: Partial<Evidence> = {}): Evidence => ({
   touched: new Set<string>(),
   fetched: new Set<string>(),
+  listed: new Set<string>(),
+  shellListedUnknown: false,
   mutations: 0,
   verified: false,
   kindOf: () => "missing",
@@ -473,5 +476,91 @@ describe("grounding.absenceContradictions — directory claims", () => {
     // `boenet` holds one empty subdirectory and zero files. Counting entries
     // called it non-empty, which would have accused a correct answer of lying.
     expect(absenceContradictions("`boenet` is empty.", kind({ boenet: "missing" }))).toEqual([])
+  })
+})
+
+// The failure this detector exists for. A live session asserted that `messing
+// with OAC` held the careeragent source -- a Streamlit UI, an SSE decoder --
+// after reading one README inside it and never listing the folder. It holds 11
+// files and no Python at all. Grounding watched it go past three times: every
+// detector it had was looking for a claim that something was MISSING, and this
+// was a claim that something was THERE.
+describe("grounding.unlistedDirectoryClaims", () => {
+  const dir = (over: Partial<Evidence> = {}) =>
+    evidence({ kindOf: kindOf({ "messing with OAC": "nonEmptyDirectory" }), ...over })
+
+  test("a directory whose contents are described but was never listed is flagged", () => {
+    const out = unlistedDirectoryClaims("`messing with OAC` holds the careeragent source.", dir())
+    expect(out.length).toBe(1)
+    expect(out[0]).toContain("messing with OAC")
+    expect(out[0]).toContain("nothing in this run listed it")
+  })
+
+  test("reading one file inside is NOT enough", () => {
+    // This is precisely what happened: one README read, a whole directory
+    // characterised. If a read inside counted, the detector would miss the
+    // only case it was built for.
+    const out = unlistedDirectoryClaims(
+      "`messing with OAC` holds the careeragent source.",
+      dir({ touched: new Set(["messing with OAC/careeragent-frontend/README.md"]) }),
+    )
+    expect(out.length).toBe(1)
+  })
+
+  test("listing it clears the claim", () => {
+    expect(
+      unlistedDirectoryClaims(
+        "`messing with OAC` holds the careeragent source.",
+        dir({ listed: new Set(["messing with OAC"]) }),
+      ),
+    ).toEqual([])
+  })
+
+  test("naming a child that was actually opened backs the claim", () => {
+    // "`src` contains `src/main.ts`" is grounded by the read, with no listing.
+    const out = unlistedDirectoryClaims(
+      "`src` contains `src/main.ts`.",
+      evidence({ kindOf: kindOf({ src: "nonEmptyDirectory" }), touched: new Set(["src/main.ts"]) }),
+    )
+    expect(out).toEqual([])
+  })
+
+  test("an unattributable listing stands the whole check down", () => {
+    // Silence beats accusing a truthful answer, so an un-pinnable listing
+    // disables the detector rather than risking a false flag.
+    expect(unlistedDirectoryClaims("`messing with OAC` holds the source.", dir({ shellListedUnknown: true }))).toEqual(
+      [],
+    )
+  })
+
+  test("enumerating the whole workspace stands it down too", () => {
+    expect(unlistedDirectoryClaims("`messing with OAC` holds the source.", dir({ listed: new Set([""]) }))).toEqual([])
+  })
+
+  test("a claim about a FILE is not this detector's business", () => {
+    expect(
+      unlistedDirectoryClaims(
+        "`main.ts` contains the entry point.",
+        evidence({ kindOf: kindOf({ "main.ts": "file" }) }),
+      ),
+    ).toEqual([])
+  })
+
+  test("an empty directory still counts as a directory", () => {
+    // `boenet` holds zero files and one empty subfolder. "boenet holds code"
+    // is exactly the false presence claim seen live, so it must be judgeable.
+    const out = unlistedDirectoryClaims(
+      "`boenet` holds code.",
+      evidence({ kindOf: kindOf({ boenet: "emptyDirectory" }) }),
+    )
+    expect(out.length).toBe(1)
+  })
+
+  test("a question is not a claim", () => {
+    expect(unlistedDirectoryClaims("Does `messing with OAC` contain the source?", dir())).toEqual([])
+  })
+
+  test("a sentence with no content claim is left alone", () => {
+    expect(unlistedDirectoryClaims("I looked at `messing with OAC` briefly.", dir())).toEqual([])
   })
 })

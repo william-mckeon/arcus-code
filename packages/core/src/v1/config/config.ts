@@ -92,13 +92,19 @@ export const Info = Schema.Struct({
           "Require a claim to actually predicate absence of the path before flagging it, and ignore rebuttals such as 'I did not open x'. Fewer false flags, slightly fewer catches.",
       }),
       check_paths: Schema.optional(Schema.Boolean).annotate({
-        description: "Flag a file path cited in the answer that does not exist and was never read this run. On by default.",
+        description:
+          "Flag a file path cited in the answer that does not exist and was never read this run. On by default.",
       }),
       check_web: Schema.optional(Schema.Boolean).annotate({
         description: "Flag a URL cited in the answer that was never fetched this run. On by default.",
       }),
       check_mutations: Schema.optional(Schema.Boolean).annotate({
-        description: "Flag a claim that a file was created or changed when nothing was written this run. On by default.",
+        description:
+          "Flag a claim that a file was created or changed when nothing was written this run. On by default.",
+      }),
+      check_directory_claims: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Flag a claim about what a directory contains when nothing in the run ever listed it. Reading a file inside does not count. On by default.",
       }),
     }),
   ).annotate({

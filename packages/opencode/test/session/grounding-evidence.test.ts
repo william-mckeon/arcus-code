@@ -111,3 +111,59 @@ describe("grounding evidence from shell writes", () => {
     expect(e.mutations).toBe(1)
   })
 })
+
+// Listing a directory is its own kind of evidence. Opening a file inside one
+// proves that file is there; only an enumeration supports a claim about what
+// the directory as a whole holds.
+describe("grounding evidence — directory listings", () => {
+  const collectWith = (
+    parts: unknown[],
+    kind: (p: string) => "file" | "nonEmptyDirectory" | "emptyDirectory" | "missing",
+  ) => GroundingEvidence.collect({ parts: parts as never, kindOf: kind })
+
+  test("a read of a directory counts as listing it", () => {
+    // The read tool answers a directory with its contents, not an error.
+    const e = collectWith([toolPart("read", { filePath: "src" })], () => "nonEmptyDirectory")
+    expect([...e.listed]).toEqual(["src"])
+  })
+
+  test("a read of a file does not", () => {
+    const e = collectWith([toolPart("read", { filePath: "src/a.ts" })], () => "file")
+    expect([...e.listed]).toEqual([])
+    expect([...e.touched]).toEqual(["src/a.ts"])
+  })
+
+  test("a glob records the directory it searched", () => {
+    const e = collect([toolPart("glob", { pattern: "**/*.ts", path: "packages/core" })])
+    expect([...e.listed]).toContain("packages/core")
+  })
+
+  test("a glob pattern's literal prefix counts", () => {
+    const e = collect([toolPart("glob", { pattern: "src/session/*.ts" })])
+    expect([...e.listed]).toContain("src/session")
+  })
+
+  test("a shell listing with a path is attributed to it", () => {
+    const e = collect([toolPart("bash", { command: "ls -R centpilot" })])
+    expect([...e.listed]).toContain("centpilot")
+    expect(e.shellListedUnknown).toBe(false)
+  })
+
+  test("a shell listing with no path stands the check down", () => {
+    // Better to silence the directory check than accuse a truthful answer.
+    const e = collect([toolPart("bash", { command: "ls" })])
+    expect(e.shellListedUnknown).toBe(true)
+  })
+
+  test("a non-listing command records nothing", () => {
+    const e = collect([toolPart("bash", { command: "git status" })])
+    expect([...e.listed]).toEqual([])
+    expect(e.shellListedUnknown).toBe(false)
+  })
+
+  test("a command merely containing 'ls' is not a listing", () => {
+    for (const cmd of ["curl https://x.dev", "tools/build.sh"]) {
+      expect(collect([toolPart("bash", { command: cmd })]).shellListedUnknown).toBe(false)
+    }
+  })
+})

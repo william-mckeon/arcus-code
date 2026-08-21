@@ -256,7 +256,10 @@ const layer = Layer.effect(
         try {
           const stat = fs.statSync(full)
           if (stat.isFile()) return "file"
-          if (stat.isDirectory()) return hasFiles(full) ? "nonEmptyDirectory" : "missing"
+          // An empty directory is not a missing one. Absence claims must not fire
+          // on it (that was the false-accusation trap), but the directory-claim
+          // check still needs to know the path IS a directory.
+          if (stat.isDirectory()) return hasFiles(full) ? "nonEmptyDirectory" : "emptyDirectory"
         } catch {
           return "missing"
         }
@@ -352,6 +355,7 @@ const layer = Layer.effect(
         checkPaths: cfg.grounding?.check_paths ?? true,
         checkWeb: cfg.grounding?.check_web ?? true,
         checkMutations: cfg.grounding?.check_mutations ?? true,
+        checkDirectoryClaims: cfg.grounding?.check_directory_claims ?? true,
       })
       // A clean pass and a VACUOUS one looked identical in the log: silence.
       // That is how a session whose answer was wrong went three turns without a

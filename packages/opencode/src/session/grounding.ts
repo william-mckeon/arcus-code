@@ -183,7 +183,7 @@ function claimsPathIsAbsent(sentence: string, path: string) {
   return true
 }
 
-export type PathKind = "file" | "nonEmptyDirectory" | "missing"
+export type PathKind = "file" | "nonEmptyDirectory" | "emptyDirectory" | "missing"
 
 /**
  * Flag a claim that a cited path is empty/missing/absent when it actually
@@ -387,6 +387,10 @@ export interface Evidence {
   readonly mutations: number
   /** True if some command this turn was a real check that exited 0. */
   readonly verified: boolean
+  /** Directories this run enumerated. Reading a file inside one is NOT listing it. */
+  readonly listed: ReadonlySet<string>
+  /** A listing ran whose target could not be attributed to a path. */
+  readonly shellListedUnknown: boolean
   /** Live-workspace oracle. Returns "missing" when it cannot tell. */
   readonly kindOf: (path: string) => PathKind
 }
@@ -396,6 +400,7 @@ export interface Options {
   readonly checkPaths?: boolean
   readonly checkWeb?: boolean
   readonly checkMutations?: boolean
+  readonly checkDirectoryClaims?: boolean
   /**
    * "Does this citation name something that exists?" Separate from
    * Evidence.kindOf, which answers about one exact location: a bare filename
@@ -412,12 +417,65 @@ export interface Options {
  * path: an absence claim names its target only in prose, so gating on citations
  * would skip exactly the case this is for.
  */
+// ------------------------------------------- described but never looked at
+
+// The answer characterises what a directory CONTAINS. Every other detector
+// here examines a claim of ABSENCE; this is the mirror, and it is the one the
+// live failure needed.
+const CONTENT_CLAIM =
+  /\b(?:holds?|contains?|has|have|includes?|including|houses?|stores?|comprises?|consists?\s+of|full\s+of|made\s+up\s+of|is\s+where)\b/i
+
+/**
+ * A directory whose contents the answer describes, that the run never listed.
+ *
+ * The scar: an answer said `messing with OAC` held the careeragent source --
+ * a Streamlit UI, an SSE decoder -- having read one README inside it and never
+ * listed the folder. It holds 11 files and no Python at all. The grounding
+ * layer watched that pass three times, because everything it knew how to look
+ * for was a claim that something was MISSING, and this was a claim that
+ * something was THERE.
+ *
+ * Reading a file inside a directory is deliberately NOT enough. That is exactly
+ * what happened here: one file read, a whole directory characterised. What
+ * counts is having enumerated it.
+ *
+ * Narrow on purpose. If a listing ran whose target could not be pinned to a
+ * path, the check stands down entirely rather than risk calling a true answer
+ * a lie.
+ */
+export function unlistedDirectoryClaims(finalText: string | undefined, evidence: Evidence) {
+  if (!finalText) return []
+  if (evidence.shellListedUnknown) return []
+  if (evidence.listed.has("")) return [] // the whole workspace was enumerated
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const sent of sentences(finalText)) {
+    if (isQuestion(sent)) continue
+    if (!CONTENT_CLAIM.test(prose(sent))) continue
+    const cited = citedPaths(sent, false)
+    for (const p of cited) {
+      const kind = evidence.kindOf(p)
+      if (kind !== "nonEmptyDirectory" && kind !== "emptyDirectory") continue
+      if (evidence.listed.has(p)) continue
+      // Naming a child that was actually opened backs a claim about that child,
+      // so "`src` contains `src/main.ts`" is grounded even with no listing.
+      const backed = cited.some((c) => c !== p && c.startsWith(`${p}/`) && evidence.touched.has(c))
+      if (backed) continue
+      const msg = `'${p}' -- you describe what this directory contains, but nothing in this run listed it`
+      if (seen.has(msg)) continue
+      seen.add(msg)
+      out.push(msg)
+    }
+  }
+  return out
+}
 export function problems(finalText: string | undefined, evidence: Evidence, options: Options = {}) {
   if (!finalText) return []
   const out: string[] = []
 
   out.push(...absenceContradictions(finalText, evidence.kindOf, { strict: options.absenceStrict }))
   out.push(...unverifiedSuccessClaim(finalText, evidence.verified))
+  if (options.checkDirectoryClaims ?? true) out.push(...unlistedDirectoryClaims(finalText, evidence))
 
   if (options.checkWeb) out.push(...webCitationProblems(finalText, evidence.fetched))
   if (options.checkMutations) out.push(...unbackedMutationClaim(finalText, evidence.mutations))
