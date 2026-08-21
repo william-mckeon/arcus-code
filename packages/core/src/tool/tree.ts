@@ -72,15 +72,19 @@ const layer = Layer.effectDiscard(
 
               const root = path.resolve(location.directory, input.path ?? ".")
               const allowed = yield* ripgrep.glob({ cwd: root, pattern: "**/*", limit: IGNORE_SAMPLE_LIMIT }).pipe(
-                Effect.map((entries) => new Set(entries.map((entry) => entry.path.replaceAll("\\", "/")))),
-                Effect.catch(() => Effect.succeed(undefined)),
+                Effect.map((result) => ({
+                  allowed: new Set(result.items.map((entry) => entry.path.replaceAll("\\", "/"))),
+                  truncated: result.truncated,
+                })),
+                Effect.catch(() => Effect.succeed({ allowed: undefined, truncated: true })),
               )
 
               const map = TreeMap.build({
                 root,
-                // A saturated sample means the filter is incomplete, and
-                // filtering against a partial list would hide real files.
-                allowed: allowed && allowed.size < IGNORE_SAMPLE_LIMIT ? allowed : undefined,
+                // See the v1 tool: a truncated ignore list would hide real files,
+                // so fall back to the noise list rather than filter against a
+                // partial one. Truncation is now reported, not inferred.
+                allowed: allowed.truncated ? undefined : allowed.allowed,
                 depth: input.depth,
               })
 

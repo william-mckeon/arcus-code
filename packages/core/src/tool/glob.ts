@@ -26,16 +26,28 @@ export const Input = Schema.Struct({
   }),
 })
 
-export const Output = Schema.Array(FileSystem.Entry)
+// Carries whether the cap was hit. It used to be a bare array, so this tool
+// disclosed truncation not at all -- it silently returned at most `limit` and
+// said nothing, leaving a partial answer indistinguishable from a whole one.
+export const Output = Schema.Struct({
+  items: Schema.Array(FileSystem.Entry),
+  truncated: Schema.Boolean,
+})
 type ModelOutput = typeof Output.Encoded
 
 /** Format raw search results into the concise line-oriented output models expect. */
 export const toModelOutput = (output: ModelOutput, query?: { pattern: string; searched: string }) => {
   // "No files found" cannot distinguish a mis-aimed pattern from an empty
   // directory, so it gets read as the latter. Name what was searched.
-  if (output.length === 0)
+  if (output.items.length === 0)
     return query ? ToolDiagnostics.noFilesMatching(query) : "No files matched the pattern. The directory was searched."
-  return output.map((item) => item.path).join("\n")
+  const lines = output.items.map((item) => item.path)
+  if (output.truncated)
+    lines.push(
+      "",
+      ToolDiagnostics.cappedResults({ shown: output.items.length, noun: "files", narrow: "pattern or path" }),
+    )
+  return lines.join("\n")
 }
 
 /** Glob leaf that defaults its filesystem root to the active Location. */
@@ -57,7 +69,13 @@ const layer = Layer.effectDiscard(
             {
               type: "text",
               text: toModelOutput(
-                output.map((entry) => ({ ...entry, path: path.resolve(location.directory, entry.path) })),
+                {
+                  items: output.items.map((entry) => ({
+                    ...entry,
+                    path: path.resolve(location.directory, entry.path),
+                  })),
+                  truncated: output.truncated,
+                },
                 { pattern: input.pattern, searched: path.resolve(location.directory, input.path ?? ".") },
               ),
             },
@@ -85,14 +103,15 @@ const layer = Layer.effectDiscard(
                   limit: input.limit ?? Number.MAX_SAFE_INTEGER,
                 })
                 .pipe(
-                  Effect.map((result) =>
-                    result.map((entry) =>
+                  Effect.map((result) => ({
+                    items: result.items.map((entry) =>
                       FileSystem.Entry.make({
                         ...entry,
                         path: RelativePath.make(path.relative(location.directory, path.resolve(cwd, entry.path))),
                       }),
                     ),
-                  ),
+                    truncated: result.truncated,
+                  })),
                 )
             }).pipe(
               Effect.mapError(() => new ToolFailure({ message: `Unable to find files matching ${input.pattern}` })),

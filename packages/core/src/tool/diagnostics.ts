@@ -106,3 +106,26 @@ export function nearby(entries: readonly string[], base: string, limit = 3) {
     })
     .slice(0, limit)
 }
+
+/**
+ * A result that hit its cap.
+ *
+ * The old notices could not say how much was withheld -- "Results truncated"
+ * and "showing first 100 results" both leave the reader to guess whether they
+ * missed one file or four thousand -- and worse, both were produced by
+ * comparing the row count to the limit, which cannot tell "exactly 100 results"
+ * from "100 and more behind them". A search finding exactly the limit therefore
+ * announced itself as incomplete when it was whole.
+ *
+ * Ripgrep fetches one row beyond the limit to settle that, so the honest figure
+ * is a floor rather than a total: at least shown + 1 exist. An exact count would
+ * need a second full scan of the tree, which is real latency on every search to
+ * refine a number the reader rarely acts on.
+ */
+export function cappedResults(input: { shown: number; noun: string; narrow: string }) {
+  return [
+    `Showing the first ${input.shown} ${input.noun}, of at least ${input.shown + 1}.`,
+    `This is a PARTIAL result: more exist than are listed here.`,
+    `Narrow the ${input.narrow} to see the rest, and do not describe what is listed as everything there is.`,
+  ].join(" ")
+}

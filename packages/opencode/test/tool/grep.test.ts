@@ -190,8 +190,13 @@ describe("tool.grep", () => {
       const grep = yield* info.init()
       const result = yield* grep.execute({ pattern: "needle", path: test.directory, include: "*.txt" }, ctx)
 
-      expect(result.output).toContain("(Results truncated. Consider using a more specific path or pattern.)")
-      expect(result.output).not.toMatch(/showing \d+ of \d+ matches/)
+      // The original intent, preserved: never state a total we do not know.
+      // ripgrep stops one row past the limit, so the honest figure is a FLOOR
+      // -- "at least 101" -- not a count. What changed is that the notice now
+      // says how many WERE shown, which the old text left out entirely.
+      expect(result.output).toContain("at least 101")
+      expect(result.output).toContain("first 100 matches")
+      expect(result.output).toContain("PARTIAL")
     }),
   )
 
@@ -263,6 +268,38 @@ describe("tool.grep", () => {
       expect(result.output).toContain(path.join(alias, "test.txt"))
       expect(result.output).not.toContain(path.join(real, "test.txt"))
       expect(requests.find((req) => req.permission === "external_directory")).toBeUndefined()
+    }),
+  )
+})
+
+// Same defect as glob: `rows.length === limit` cannot tell a search that found
+// exactly the limit from one that found more, so a whole result announced
+// itself as partial. And the old notice never said how many WERE shown.
+describe("tool.grep truncation", () => {
+  const lines = (count: number) => Array.from({ length: count }, (_, i) => `needle ${i}`).join("\n") + "\n"
+
+  it.instance("exactly at the limit is not reported as truncated", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "exact.txt"), lines(100)))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: test.directory }, ctx)
+      expect(result.metadata.truncated).toBe(false)
+      expect(result.output).not.toContain("PARTIAL")
+    }),
+  )
+
+  it.instance("past the limit says how many were shown and that more exist", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "over.txt"), lines(150)))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: test.directory }, ctx)
+      expect(result.metadata.truncated).toBe(true)
+      expect(result.output).toContain("at least 101")
+      expect(result.output).toContain("PARTIAL")
     }),
   )
 })

@@ -70,16 +70,21 @@ export const TreeTool = Tool.define(
           // that silently vanishes is exactly how an answer comes to claim
           // something is not there.
           const allowed = yield* ripgrep.glob({ cwd: root, pattern: "**/*", limit: IGNORE_SAMPLE_LIMIT }).pipe(
-            Effect.map((entries) => new Set(entries.map((entry) => entry.path.replaceAll("\\", "/")))),
-            Effect.catch(() => Effect.succeed(undefined)),
+            Effect.map((result) => ({
+              allowed: new Set(result.items.map((entry) => entry.path.replaceAll("\\", "/"))),
+              truncated: result.truncated,
+            })),
+            Effect.catch(() => Effect.succeed({ allowed: undefined, truncated: true })),
           )
 
           const map = TreeMap.build({
             root,
-            // A saturated sample means the filter is incomplete, and filtering
-            // against a partial list would hide real files. Fall back to the
-            // noise list, which is coarser but never wrong about existence.
-            allowed: allowed && allowed.size < IGNORE_SAMPLE_LIMIT ? allowed : undefined,
+            // ripgrep now reports truncation instead of leaving it to be guessed
+            // from the row count, so an incomplete ignore list is known rather
+            // than inferred. Filtering against a partial list would hide real
+            // files, so fall back to the noise list -- coarser, never wrong
+            // about existence.
+            allowed: allowed.truncated ? undefined : allowed.allowed,
             depth: params.depth,
           })
 

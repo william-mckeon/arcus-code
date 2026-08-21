@@ -74,9 +74,9 @@ export const GrepTool = Tool.define(
             file: isFile ? path.basename(search) : undefined,
             limit: 100,
           })
-          if (result.length === 0) return empty(search)
+          if (result.items.length === 0) return empty(search)
 
-          const rows = result.map((item) => ({
+          const rows = result.items.map((item) => ({
             path: path.resolve(
               requestedInfo?.type === "Directory" ? requested : path.dirname(requested),
               item.entry.path,
@@ -85,13 +85,15 @@ export const GrepTool = Tool.define(
             text: item.text,
           }))
 
-          const limit = 100
-          const truncated = rows.length === limit
+          // From ripgrep, not inferred. `rows.length === limit` cannot tell a
+          // search that found exactly 100 matches from one that found more, so
+          // it announced a complete result as partial.
+          const truncated = result.truncated
           const final = rows
           if (final.length === 0) return empty(search)
 
           const total = rows.length
-          const hasMore = truncated || result.length === limit
+          const hasMore = truncated
           const output = [`Found ${total} matches${hasMore ? " (more matches available)" : ""}`]
 
           let current = ""
@@ -106,7 +108,9 @@ export const GrepTool = Tool.define(
 
           if (truncated) {
             output.push("")
-            output.push("(Results truncated. Consider using a more specific path or pattern.)")
+            output.push(
+              ToolDiagnostics.cappedResults({ shown: total, noun: "matches", narrow: "pattern, path or include" }),
+            )
           }
 
           return {

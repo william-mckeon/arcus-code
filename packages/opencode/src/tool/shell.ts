@@ -588,7 +588,22 @@ export const ShellTool = Tool.define(
       if (!output) output = "(no output)"
 
       if (cut && file) {
-        output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
+        // `...output truncated...` stays intact as a marker -- it is what the
+        // rest of the system recognises -- with the amount appended rather
+        // than substituted. On its own the marker left the reader unable to
+        // tell whether two lines were dropped or two thousand, and a preview
+        // that looks whole gets described as whole.
+        //
+        // A floor, not a total: the rolling window may already have discarded
+        // chunks before this point, so the file on disk is the only complete
+        // record.
+        const kept = output.split("\n").length
+        const dropped = Math.max(0, raw.split("\n").length - kept)
+        output =
+          `...output truncated...\n\n` +
+          `Showing the last ${kept} lines, with at least ${dropped} withheld. This is a PARTIAL view.\n` +
+          `Full output saved to: ${file}\n\n` +
+          output
       }
 
       if (meta.length > 0) {

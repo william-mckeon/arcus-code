@@ -32,7 +32,13 @@ export const Input = Schema.Struct({
   }),
 })
 
-export const Output = Schema.Array(FileSystem.Match)
+// Carries whether the cap was hit. It used to be a bare array, so this tool
+// disclosed truncation not at all -- silently returning at most `limit` and
+// saying nothing, which leaves a partial answer looking whole.
+export const Output = Schema.Struct({
+  items: Schema.Array(FileSystem.Match),
+  truncated: Schema.Boolean,
+})
 type ModelOutput = typeof Output.Encoded
 
 /** Format raw search matches into the familiar concise model output. */
@@ -40,11 +46,11 @@ export const toModelOutput = (output: ModelOutput, query?: { pattern: string; se
   // An empty result has to say the pattern did not match, not that no files
   // exist -- the old "No files found" named the wrong noun and read as a
   // claim about the repository rather than about the search.
-  if (output.length === 0)
+  if (output.items.length === 0)
     return query ? ToolDiagnostics.noMatches(query) : "No matches. The search ran and the pattern did not match."
-  const lines = [`Found ${output.length} matches`]
+  const lines = [`Found ${output.items.length} matches`]
   let current = ""
-  for (const match of output) {
+  for (const match of output.items) {
     if (current !== match.entry.path) {
       if (current) lines.push("")
       current = match.entry.path
@@ -52,6 +58,15 @@ export const toModelOutput = (output: ModelOutput, query?: { pattern: string; se
     }
     lines.push(`  Line ${match.line}: ${match.text}`)
   }
+  if (output.truncated)
+    lines.push(
+      "",
+      ToolDiagnostics.cappedResults({
+        shown: output.items.length,
+        noun: "matches",
+        narrow: "pattern, path or include",
+      }),
+    )
   return lines.join("\n")
 }
 
@@ -75,10 +90,13 @@ const layer = Layer.effectDiscard(
             {
               type: "text",
               text: toModelOutput(
-                output.map((match) => ({
-                  ...match,
-                  entry: { ...match.entry, path: path.resolve(location.directory, match.entry.path) },
-                })),
+                {
+                  truncated: output.truncated,
+                  items: output.items.map((match) => ({
+                    ...match,
+                    entry: { ...match.entry, path: path.resolve(location.directory, match.entry.path) },
+                  })),
+                },
                 {
                   pattern: input.pattern,
                   searched: path.resolve(location.directory, input.path ?? "."),
@@ -114,8 +132,9 @@ const layer = Layer.effectDiscard(
                   limit: input.limit ?? Number.MAX_SAFE_INTEGER,
                 })
                 .pipe(
-                  Effect.map((result) =>
-                    result.map((match) =>
+                  Effect.map((result) => ({
+                    truncated: result.truncated,
+                    items: result.items.map((match) =>
                       FileSystem.Match.make({
                         ...match,
                         entry: FileSystem.Entry.make({
@@ -132,7 +151,7 @@ const layer = Layer.effectDiscard(
                         }),
                       }),
                     ),
-                  ),
+                  })),
                 )
             }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to grep for ${input.pattern}` }))),
         }),

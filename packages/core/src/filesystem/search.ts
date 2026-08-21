@@ -60,7 +60,7 @@ export const ripgrepLayer = Layer.effect(
             })
             .pipe(
               Effect.map((result) =>
-                result.map((entry) =>
+                result.items.map((entry) =>
                   FileSystem.Entry.make({
                     ...entry,
                     path: RelativePath.make(path.relative(location.directory, path.resolve(cwd, entry.path))),
@@ -85,7 +85,7 @@ export const ripgrepLayer = Layer.effect(
             })
             .pipe(
               Effect.map((result) =>
-                result.map((match) =>
+                result.items.map((match) =>
                   FileSystem.Match.make({
                     ...match,
                     entry: FileSystem.Entry.make({
