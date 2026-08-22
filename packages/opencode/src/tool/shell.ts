@@ -25,6 +25,11 @@ import { BashArity } from "@/permission/arity"
 export { Parameters } from "./shell/prompt"
 
 const MAX_METADATA_LENGTH = 30_000
+
+// How often a running command may publish a durable progress frame. Fast
+// enough to look live, slow enough that a chatty recursive listing no longer
+// writes half a gigabyte of rows nobody reads.
+const PROGRESS_INTERVAL_MS = 150
 const CWD = new Set(["cd", "chdir", "popd", "pushd", "push-location", "set-location"])
 const FILES = new Set([
   ...CWD,
@@ -443,6 +448,21 @@ export const ShellTool = Tool.define(
       let used = 0
       let file = ""
       let sink: ReturnType<typeof createWriteStream> | undefined
+      // Live progress frames exist for the UI, but every ctx.metadata call is
+      // published as a DURABLE event. At one call per stdout chunk a single
+      // `Get-ChildItem -Recurse` wrote 16,692 rows / 545 MB, and the session
+      // database reached 2.49 GB of which 2,316 MB was throwaway `running`
+      // frames -- 73,007 rows preserving the 323 that anything ever reads.
+      //
+      // Throttling to a human-visible cadence loses nothing: the terminal
+      // state is carried by this tool's RETURN value, not by the last frame.
+      let lastEmit = 0
+      const emitProgress = (force = false) => {
+        const now = Date.now()
+        if (!force && now - lastEmit < PROGRESS_INTERVAL_MS) return Effect.void
+        lastEmit = now
+        return ctx.metadata({ metadata: { output: last } })
+      }
       let cut = false
       let expired = false
       let aborted = false
@@ -511,22 +531,14 @@ export const ShellTool = Tool.define(
                         full = ""
                       }),
                     ),
-                    Effect.andThen(
-                      ctx.metadata({
-                        metadata: {
-                          output: last,
-                        },
-                      }),
-                    ),
+                    // A spill to disk is a real state change, not a progress
+                    // tick -- always publish it.
+                    Effect.andThen(Effect.suspend(() => emitProgress(true))),
                   )
                 }
               }
 
-              return ctx.metadata({
-                metadata: {
-                  output: last,
-                },
-              })
+              return emitProgress()
             }),
           )
 
@@ -576,7 +588,22 @@ export const ShellTool = Tool.define(
       if (!output) output = "(no output)"
 
       if (cut && file) {
-        output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
+        // `...output truncated...` stays intact as a marker -- it is what the
+        // rest of the system recognises -- with the amount appended rather
+        // than substituted. On its own the marker left the reader unable to
+        // tell whether two lines were dropped or two thousand, and a preview
+        // that looks whole gets described as whole.
+        //
+        // A floor, not a total: the rolling window may already have discarded
+        // chunks before this point, so the file on disk is the only complete
+        // record.
+        const kept = output.split("\n").length
+        const dropped = Math.max(0, raw.split("\n").length - kept)
+        output =
+          `...output truncated...\n\n` +
+          `Showing the last ${kept} lines, with at least ${dropped} withheld. This is a PARTIAL view.\n` +
+          `Full output saved to: ${file}\n\n` +
+          output
       }
 
       if (meta.length > 0) {

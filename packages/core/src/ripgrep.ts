@@ -76,10 +76,30 @@ export interface GrepInput {
   readonly signal?: AbortSignal
 }
 
+/**
+ * A bounded search result, carrying whether the bound was actually hit.
+ *
+ * These used to return a bare array, and the truncation flag -- which is
+ * computed correctly a few lines below, by fetching one more row than asked for
+ * -- was thrown away at the boundary. Every caller then re-derived it as
+ * `items.length === limit`, which cannot tell "exactly 100 results" from "100
+ * and more behind them". Both search tools shipped that inference, so a search
+ * finding exactly the limit told the model its picture was incomplete when it
+ * was whole.
+ *
+ * The flag is returned rather than offered, so it cannot be dropped by omission
+ * a second time.
+ */
+export interface Result<A> {
+  readonly items: readonly A[]
+  /** True when more rows existed beyond `limit` and were not returned. */
+  readonly truncated: boolean
+}
+
 export interface Interface {
-  readonly find: (input: FindInput) => Effect.Effect<readonly Entry[], Error>
-  readonly glob: (input: GlobInput) => Effect.Effect<readonly Entry[], Error>
-  readonly grep: (input: GrepInput) => Effect.Effect<readonly Match[], Error | InvalidPatternError>
+  readonly find: (input: FindInput) => Effect.Effect<Result<Entry>, Error>
+  readonly glob: (input: GlobInput) => Effect.Effect<Result<Entry>, Error>
+  readonly grep: (input: GrepInput) => Effect.Effect<Result<Match>, Error | InvalidPatternError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Ripgrep") {}
@@ -174,14 +194,15 @@ const layer = Layer.effect(
                 .replaceAll("\\", "/"),
             ),
         }).pipe(
-          Effect.map((result) =>
-            result.items.map((relative) =>
+          Effect.map((result) => ({
+            items: result.items.map((relative) =>
               Entry.make({
                 path: RelativePath.make(relative),
                 type: "file",
               }),
             ),
-          ),
+            truncated: result.truncated,
+          })),
           Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
         ),
       find: (input) =>
@@ -212,7 +233,7 @@ const layer = Layer.effect(
           },
           onItem: input.onEntry,
         }).pipe(
-          Effect.map((result) => result.items),
+          Effect.map((result) => ({ items: result.items, truncated: result.truncated })),
           Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
         ),
       grep: (input) =>
@@ -251,8 +272,9 @@ const layer = Layer.effect(
               }),
             ),
         }).pipe(
-          Effect.map((result) =>
-            result.items.map((match) => {
+          Effect.map((result) => ({
+            truncated: result.truncated,
+            items: result.items.map((match) => {
               const relative = match.path.text
                 .replace(/^(?:\.[\\/])+/u, "")
                 .replace(/^[\\/]+/u, "")
@@ -275,7 +297,7 @@ const layer = Layer.effect(
                 })),
               })
             }),
-          ),
+          })),
         ),
     })
   }),

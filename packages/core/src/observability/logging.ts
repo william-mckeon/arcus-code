@@ -49,7 +49,13 @@ function format(input: unknown) {
 
 export function fileLogger(file = path.join(Global.Path.log, `${Brand.slug}.log`), id: string = runID) {
   // Do not set batchWindow to 0; it causes high idle CPU usage.
-  return Logger.toFile(formatter(id), file, { flag: "a" })
+  //
+  // But the default window is long enough to lose the end of a short run. Of
+  // 108 runs in one log file only 24 had recorded their own "exiting loop",
+  // and the lost tail is exactly where the `usage` cost lines and the grounding
+  // verdict live -- so most runs were invisible in precisely the way the cost
+  // instrumentation was added to prevent. 25ms is still far off zero.
+  return Logger.toFile(formatter(id), file, { flag: "a", batchWindow: "25 millis" })
 }
 
 const stderrLogger = Logger.make((options) => process.stderr.write(formatter().log(options) + "\n"))

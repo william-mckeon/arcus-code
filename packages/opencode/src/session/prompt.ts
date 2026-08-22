@@ -1,6 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import path from "path"
+import fs from "fs"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
@@ -55,6 +56,8 @@ import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
+import { Grounding } from "./grounding"
+import { GroundingEvidence } from "./grounding/evidence"
 import { LLMEvent, Usage } from "@opencode-ai/llm"
 
 // @ts-ignore
@@ -188,6 +191,196 @@ const layer = Layer.effect(
         { concurrency: "unbounded", discard: true },
       )
       return parts
+    })
+
+    // Grounding gate (log only for now). Verified completion proves the run DID
+    // the work; this asks whether the closing answer's CLAIMS are backed by the
+    // files and commands of this run -- the honest-but-wrong class, where a
+    // real path carries the wrong fact, or something present is called absent.
+    //
+    // It reports and does nothing else. The detectors are ported from a project
+    // whose regexes were tuned against its own models' phrasing, and these run
+    // against different ones, so the first job is to see what it would have
+    // flagged on real sessions before it is allowed to change any output.
+    const checkGrounding = Effect.fn("SessionPrompt.checkGrounding")(function* (input: {
+      sessionID: SessionID
+      message: SessionV1.WithParts | undefined
+      turn: readonly SessionV1.WithParts[]
+    }) {
+      const cfg = yield* config.get()
+      // On unless explicitly disabled. A check that only runs when someone
+      // remembers to turn it on is a check that never runs on the sessions
+      // where it would have mattered.
+      if (cfg.grounding?.enabled === false) return
+      if (!input.message) return
+
+      const finalText = input.message.parts
+        .filter((part): part is SessionV1.TextPart => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+        .trim()
+      if (!finalText) return
+
+      const ctx = yield* InstanceState.context
+
+      // worktree is the literal string "/" for a directory that is not a repo
+      // (project.ts sets it that way for the "global" project), which is a
+      // sentinel, not somewhere to resolve a path against. Resolving citations
+      // against it meant resolving them against the filesystem root: every
+      // relative citation missed, and the index below walked the whole drive.
+      const base = ctx.worktree && ctx.worktree !== "/" ? ctx.worktree : ctx.directory
+
+      // Anything that cannot be resolved reads as "missing", which only ever
+      // makes a check quieter -- an unreadable path is never reported as a
+      // contradiction.
+      // "Contains files" has to mean FILES, not entries. `boenet/` holds a
+      // single empty subdirectory: counting entries called it non-empty, which
+      // would turn a truthful "boenet is empty" into a confident accusation that
+      // the answer lied. Bounded, and biased to say NO when it cannot tell --
+      // a missed catch is far cheaper than telling the user a correct answer
+      // was wrong.
+      const hasFiles = (dir: string, depth = 0): boolean => {
+        if (depth > 6) return false
+        let entries: import("fs").Dirent[]
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true })
+        } catch {
+          return false
+        }
+        if (entries.some((e) => e.isFile())) return true
+        return entries.some((e) => e.isDirectory() && hasFiles(path.join(dir, e.name), depth + 1))
+      }
+      const kindOf = (rel: string): Grounding.PathKind => {
+        const full = path.resolve(base, rel)
+        if (!full.startsWith(base)) return "missing"
+        try {
+          const stat = fs.statSync(full)
+          if (stat.isFile()) return "file"
+          // An empty directory is not a missing one. Absence claims must not fire
+          // on it (that was the false-accusation trap), but the directory-claim
+          // check still needs to know the path IS a directory.
+          if (stat.isDirectory()) return hasFiles(full) ? "nonEmptyDirectory" : "emptyDirectory"
+        } catch {
+          return "missing"
+        }
+        return "missing"
+      }
+
+      // Evidence spans the whole TURN, not the closing message. A loop runs many
+      // steps and each one is its own assistant message, so the tool calls that
+      // read the files usually sit on earlier messages -- collecting only from
+      // the last one reported files the run had plainly read as never touched.
+      const evidence = GroundingEvidence.collect({
+        parts: input.turn.flatMap((message) => message.parts),
+        kindOf,
+      })
+
+      // A citation is not always written relative to where the run started. An
+      // answer reviewing New folder/centpilot writes `pkg/jwt/jwt.go`, and a
+      // bare `cors.go` for a file at src/auth/internal/middleware/cors.go. Both
+      // are correct, and both fail a check that only resolves against one root.
+      //
+      // So index the project's real paths once -- lazily, only when an answer
+      // cites something that did not resolve directly -- and treat a citation
+      // as present when it matches any real path, or is the tail of one on a
+      // segment boundary.
+      const INDEX_CAP = 40000
+      let index: { paths: string[]; truncated: boolean } | undefined
+      const buildIndex = () => {
+        if (index) return index
+        const paths: string[] = []
+        let truncated = false
+        // Dependency and cache trees, which are not the project and are where
+        // the file counts explode. pkg/mod alone held 20k files in the sample.
+        const skip = new Set([
+          ".git",
+          "node_modules",
+          "dist",
+          "build",
+          "vendor",
+          ".venv",
+          "venv",
+          "target",
+          ".next",
+          "__pycache__",
+          ".pytest_cache",
+          ".mypy_cache",
+          ".ruff_cache",
+          "site-packages",
+          ".cache",
+          "coverage",
+          ".turbo",
+          "mod",
+        ])
+        const walk = (dir: string, rel: string, depth: number) => {
+          if (truncated || depth > 16) return
+          let entries: fs.Dirent[]
+          try {
+            entries = fs.readdirSync(dir, { withFileTypes: true })
+          } catch {
+            return
+          }
+          for (const entry of entries) {
+            if (paths.length >= INDEX_CAP) {
+              truncated = true
+              return
+            }
+            const next = rel ? `${rel}/${entry.name}` : entry.name
+            if (entry.isDirectory()) {
+              if (skip.has(entry.name)) continue
+              walk(path.join(dir, entry.name), next, depth + 1)
+            } else {
+              paths.push(next)
+            }
+          }
+        }
+        walk(base, "", 0)
+        index = { paths, truncated }
+        return index
+      }
+      const existsSomewhere = (p: string) => {
+        if (kindOf(p) !== "missing") return true
+        const built = buildIndex()
+        // A truncated index cannot prove absence. Saying "not found" from a
+        // partial listing is exactly the silent-cap mistake this whole layer
+        // exists to catch, so an incomplete walk yields to the answer.
+        if (built.truncated) return true
+        const tail = `/${p}`
+        return built.paths.some((real) => real === p || real.endsWith(tail))
+      }
+
+      const found = Grounding.problems(finalText, evidence, {
+        existsSomewhere,
+        absenceStrict: cfg.grounding?.absence_strict ?? true,
+        checkPaths: cfg.grounding?.check_paths ?? true,
+        checkWeb: cfg.grounding?.check_web ?? true,
+        checkMutations: cfg.grounding?.check_mutations ?? true,
+        checkDirectoryClaims: cfg.grounding?.check_directory_claims ?? true,
+      })
+      // A clean pass and a VACUOUS one looked identical in the log: silence.
+      // That is how a session whose answer was wrong went three turns without a
+      // word from this layer -- the citation extractor saw nothing, so there was
+      // nothing to judge. Record what was actually examined, so "found no
+      // problems" can be told apart from "had nothing to look at".
+      if (found.length === 0) {
+        yield* Effect.logInfo("grounding", {
+          "session.id": input.sessionID,
+          outcome: "clean",
+          citations: Grounding.citedPaths(finalText).length,
+          urls: Grounding.citedUrls(finalText).length,
+          touched: evidence.touched.size,
+          mutations: evidence.mutations,
+        })
+        return
+      }
+
+      yield* Effect.logWarning("grounding", {
+        "session.id": input.sessionID,
+        count: found.length,
+        // Joined rather than logged per problem: one line per turn keeps the
+        // signal greppable while this is still being calibrated.
+        problems: found.slice(0, 6).join(" | "),
+      })
     })
 
     const title = Effect.fn("SessionPrompt.ensureTitle")(function* (input: {
@@ -1165,6 +1358,15 @@ const layer = Layer.effect(
                 callID: orphan.callID,
               })
             }
+            yield* checkGrounding({
+              sessionID,
+              message: lastAssistantMsg,
+              // This turn: the user message that started it, plus every
+              // assistant message replying to it.
+              turn: msgs.filter(
+                (m) => m.info.id === lastUser.id || (m.info.role === "assistant" && m.info.parentID === lastUser.id),
+              ),
+            })
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
           }
@@ -1306,6 +1508,10 @@ const layer = Layer.effect(
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
+              // Last on purpose. This is the only part of the system prompt that
+              // changes on its own, and a prefix cache matches from the front, so
+              // anything ahead of it would be re-sent every midnight.
+              SystemPrompt.now(),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

@@ -64,7 +64,8 @@ describe("ReadToolFileSystem", () => {
       const malformedError = yield* ReadToolFileSystem.read(fs, malformed, "malformed.txt").pipe(Effect.flip)
 
       expect(binaryError).toBeInstanceOf(ReadToolFileSystem.BinaryFileError)
-      expect(binaryError.message).toBe("Cannot read binary file: archive.dat")
+      expect(binaryError.message).toContain("archive.dat exists")
+      expect(binaryError.message).toContain("not a missing file")
       expect(malformedError).toBeInstanceOf(ReadToolFileSystem.MalformedUtf8Error)
     }),
   )

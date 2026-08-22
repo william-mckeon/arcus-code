@@ -29,6 +29,13 @@ import { Usage, type LLMEvent } from "@opencode-ai/llm"
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
 
+// Whether this provider can report cache-creation tokens at all. Anthropic
+// bills cache writes explicitly; OpenAI-compatible APIs have no such field.
+function hasCacheWrites(model: { providerID: string }) {
+  return ["anthropic", "vertex", "bedrock", "venice", "google-vertex-anthropic"].some((id) =>
+    model.providerID.includes(id),
+  )
+}
 // A model entry that omits cache_write prices cached writes at zero, because
 // models-dev.ts maps a missing figure to 0 and nothing downstream can tell that
 // apart from a provider who genuinely charges nothing. The two are very
@@ -481,7 +488,15 @@ const layer = Layer.effect(
               output: usage.tokens.output,
               reasoning: usage.tokens.reasoning,
               "cache.read": usage.tokens.cache.read,
-              "cache.write": usage.tokens.cache.write,
+              // "n/a", not 0, when the transport has no such concept. Cache
+              // WRITES are an Anthropic-family idea: the extraction chain in
+              // session.ts reads only anthropic/vertex/bedrock/venice fields.
+              // OpenAI-compatible providers (Together among them) report a
+              // cached-token READ and nothing else, because caching there is
+              // automatic and unbilled. Printing 0 read as "we wrote nothing to
+              // cache" and cost real time chasing a hole that was not there.
+              "cache.write":
+                usage.tokens.cache.write > 0 ? usage.tokens.cache.write : hasCacheWrites(ctx.model) ? 0 : "n/a",
               cost: usage.cost.toFixed(6),
             })
             yield* warnUnpricedCacheWrite(ctx.model, usage.tokens.cache.write)

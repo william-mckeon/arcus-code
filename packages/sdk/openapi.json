@@ -21276,6 +21276,27 @@
           "small_model_variant": {
             "type": "string"
           },
+          "grounding": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "absence_strict": {
+                "type": "boolean"
+              },
+              "check_paths": {
+                "type": "boolean"
+              },
+              "check_web": {
+                "type": "boolean"
+              },
+              "check_mutations": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
           "default_agent": {
             "type": "string"
           },

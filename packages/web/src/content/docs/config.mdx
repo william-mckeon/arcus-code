@@ -374,6 +374,39 @@ You can configure the providers and models you want to use in your OpenCode conf
 
 The `small_model` option configures a separate model for lightweight tasks like title generation. By default, OpenCode tries to use a cheaper model if one is available from your provider, otherwise it falls back to your main model.
 
+### Grounding
+
+Checks whether the closing answer's claims are backed by what the run actually read and ran. Findings are written to the log; nothing is rewritten.
+
+This runs by default. To turn it off:
+
+```json title="opencode.json"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "grounding": { "enabled": false }
+}
+```
+
+Five checks run, each catching a different way an answer can be wrong while sounding right:
+
+| Key | Flags |
+| --- | --- |
+| (always) | A path described as missing or empty when it exists |
+| (always) | A build or test described as passing when nothing this turn ran one |
+| `check_paths` | A file cited in the answer that exists nowhere in the project and was never read |
+| `check_web` | A URL cited in the answer that was never fetched |
+| `check_mutations` | A claim that a file was created or changed when nothing was written |
+
+`absence_strict` (default `true`) requires a sentence to actually predicate absence of the path before flagging it, so "I did not open `x`" and "the claim that `x` is missing is incorrect" are left alone. Turning it off catches slightly more and flags slightly more.
+
+A citation written as a bare filename is checked against every file in the project, not just the root, so citing `cors.go` for a file that lives at `src/auth/internal/middleware/cors.go` is correct and is not flagged. That index is built only when an answer actually cites a bare name.
+
+Findings appear as `level=WARN message=grounding`, with the session id and the problems found:
+
+```
+message=grounding session.id=ses_... count=1 problems="'package.json' is described as missing/empty, but the file EXISTS"
+```
+
 If the small model supports reasoning levels, `small_model_variant` picks which one it runs at:
 
 ```json title="opencode.json"

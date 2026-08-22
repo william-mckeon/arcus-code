@@ -74,7 +74,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             metadata: val.metadata,
             status: "running",
             input: args,
-            time: { start: Date.now() },
+            // Preserve the original start. Rebuilding it on every progress tick
+            // measured each tool from its LAST update rather than its first, so
+            // two shell commands the log brackets at 67s and 74s were recorded
+            // in the database as 49ms and 77ms -- which made the timing data
+            // useless for diagnosing exactly the stall it was needed for.
+            time: { start: "time" in match.state ? (match.state.time?.start ?? Date.now()) : Date.now() },
           },
         }
       }),

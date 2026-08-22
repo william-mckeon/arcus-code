@@ -6,6 +6,7 @@ import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import DESCRIPTION from "./glob.txt"
 import * as Tool from "./tool"
+import { ToolDiagnostics } from "@opencode-ai/core/tool/diagnostics"
 
 export const Parameters = Schema.Struct({
   pattern: Schema.String.annotate({ description: "The glob pattern to match files against" }),
@@ -47,17 +48,22 @@ export const GlobTool = Tool.define(
           })
 
           const limit = 100
-          const files = yield* ripgrep.glob({ cwd: search, pattern: params.pattern, limit })
-          const truncated = files.length === limit
+          const result = yield* ripgrep.glob({ cwd: search, pattern: params.pattern, limit })
+          const files = result.items
+          // From ripgrep, not inferred. `files.length === limit` cannot tell a
+          // search that found exactly 100 files from one that found more, so it
+          // announced a complete result as partial.
+          const truncated = result.truncated
 
           const output = []
-          if (files.length === 0) output.push("No files found")
+          if (files.length === 0)
+            output.push(ToolDiagnostics.noFilesMatching({ pattern: params.pattern, searched: search }))
           if (files.length > 0) {
             output.push(...files.map((file) => path.resolve(search, file.path)))
             if (truncated) {
               output.push("")
               output.push(
-                `(Results are truncated: showing first ${limit} results. Consider using a more specific path or pattern.)`,
+                ToolDiagnostics.cappedResults({ shown: files.length, noun: "files", narrow: "pattern or path" }),
               )
             }
           }

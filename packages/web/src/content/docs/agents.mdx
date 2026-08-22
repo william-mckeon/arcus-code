@@ -435,6 +435,7 @@ The available permission keys are:
 | `edit`               | `write`, `edit`, `apply_patch`                                   |
 | `glob`               | `glob`                                                           |
 | `grep`               | `grep`                                                           |
+| `tree`               | `tree`                                                           |
 | `list`               | `list`                                                           |
 | `bash`               | `bash`                                                           |
 | `task`               | `task`                                                           |
@@ -447,7 +448,7 @@ The available permission keys are:
 | `question`           | `question`                                                       |
 | `doom_loop`          | Recovery prompts when an agent appears stuck                     |
 
-`read`, `edit`, `glob`, `grep`, `list`, `bash`, `task`, `external_directory`, `lsp`, and `skill` accept either a shorthand action (`"allow" | "ask" | "deny"`) or an object of glob/pattern → action for fine-grained control. The remaining keys accept the shorthand action only.
+`read`, `edit`, `glob`, `grep`, `tree`, `list`, `bash`, `task`, `external_directory`, `lsp`, and `skill` accept either a shorthand action (`"allow" | "ask" | "deny"`) or an object of glob/pattern → action for fine-grained control. The remaining keys accept the shorthand action only.
 
 :::note
 Permission keys are matched as wildcard patterns against the underlying tool name, so the same syntax works for built-ins, custom tools, and MCP tools — for example `"mymcp_*": "deny"` denies every tool from an MCP server, and `"mymcp_search": "ask"` targets a single one.

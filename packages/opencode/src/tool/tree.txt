@@ -1,0 +1,25 @@
+Map a project's folder structure in ONE call: every directory with a file count
+and a sample of its filenames.
+
+Use this FIRST to orient yourself, before any broad review or any question about
+what a project contains. It replaces the pattern of firing several globs and
+guessing at the shape from the results.
+
+What it gives you that a glob does not:
+- A directory's file COUNT, so you can see where the weight of a project is.
+- Directories that contain no files at all, reported as such rather than
+  silently absent. "empty", "no files", and "contents are ignored" are three
+  different facts and this tool keeps them apart.
+- Dependency and build directories skipped, so you see the project rather than
+  its dependencies.
+
+Parameters:
+- `path` scopes the map to a subdirectory. Depth is measured from THIS path, so
+  `tree` on a deeply nested folder still shows the levels below it.
+- `depth` limits nesting (default 3). When a directory is cut off, the map says
+  how many subdirectories it did not show.
+
+Important: what this returns is a statement about what exists. If a directory is
+listed with a file count, those files are there. If the map says a directory was
+cut off or truncated, you have NOT seen all of it -- say so, or call again with a
+narrower `path`, rather than describing what you did not see.

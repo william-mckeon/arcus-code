@@ -40,7 +40,7 @@ const FilesCommand = effectCmd({
         limit: args.limit ?? 10_000,
       })
       .pipe(Effect.orDie)
-    process.stdout.write(files.map((file) => file.path).join(EOL) + EOL)
+    process.stdout.write(files.items.map((file) => file.path).join(EOL) + EOL)
   }),
 })
 

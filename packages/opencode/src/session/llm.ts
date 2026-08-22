@@ -30,6 +30,32 @@ import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
 
+// Cheap, stable fingerprint of the cached prefix (FNV-1a). Not security, just
+// change detection: identical text must give an identical value across steps.
+function fingerprint(text: string) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16)
+}
+
+// When each session last issued a request, so the log can carry the idle gap
+// that preceded this one. Bounded: this is a diagnostic, and must not become a
+// leak in a long-lived server.
+const STREAM_AT = new Map<string, number>()
+const STREAM_AT_MAX = 512
+function previousStreamAt(sessionID: string, now: number) {
+  const previous = STREAM_AT.get(sessionID)
+  if (STREAM_AT.size >= STREAM_AT_MAX && previous === undefined) {
+    const oldest = STREAM_AT.keys().next()
+    if (!oldest.done) STREAM_AT.delete(oldest.value)
+  }
+  STREAM_AT.set(sessionID, now)
+  return previous === undefined ? 0 : now - previous
+}
+
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
 export type StreamInput = {
@@ -110,6 +136,17 @@ const live: Layer.Layer<
       // it comes from small_model_variant or the main model, then has to exist
       // on this model to apply. Logging first would also announce calls that
       // prepare then failed to build.
+      // Fields that make a cache miss diagnosable. A prompt cache survives only
+      // while the prefix is byte-identical, so if this fingerprint moves between
+      // steps of one session the cache was destroyed on our side; if it holds
+      // steady and the provider still reports cache.read=0, it was destroyed on
+      // theirs. A reviewed session read zero cache on three of six steps at a
+      // cost of ~$0.36, and nothing in the log could say which side was at
+      // fault. The idle gap is here because every total miss in that session
+      // followed a pause of roughly 45s or more.
+      const systemText = prepared.system.join("\n")
+      const streamAt = Date.now()
+      const idle = previousStreamAt(input.sessionID, streamAt)
       yield* Effect.logInfo("stream", {
         providerID: input.model.providerID,
         modelID: input.model.id,
@@ -118,6 +155,11 @@ const live: Layer.Layer<
         agent: input.agent.name,
         mode: input.agent.mode,
         variant: prepared.variantName ?? "none",
+        "system.hash": fingerprint(systemText),
+        "system.bytes": systemText.length,
+        messages: prepared.messages.length,
+        tools: Object.keys(prepared.tools).length,
+        "idle.ms": idle,
       })
 
       // Wire up toolExecutor for DWS workflow models so that tool calls

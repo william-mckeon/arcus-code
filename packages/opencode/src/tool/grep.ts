@@ -6,6 +6,7 @@ import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import DESCRIPTION from "./grep.txt"
 import * as Tool from "./tool"
+import { ToolDiagnostics } from "@opencode-ai/core/tool/diagnostics"
 
 export const Parameters = Schema.Struct({
   pattern: Schema.String.annotate({ description: "The regex pattern to search for in file contents" }),
@@ -27,11 +28,14 @@ export const GrepTool = Tool.define(
       parameters: Parameters,
       execute: (params: { pattern: string; path?: string; include?: string }, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const empty = {
+          // Built from the resolved target rather than up front: an empty result
+          // has to name what was actually searched, or a mis-aimed path and a
+          // real absence read identically.
+          const empty = (searched: string) => ({
             title: params.pattern,
             metadata: { matches: 0, truncated: false },
-            output: "No files found",
-          }
+            output: ToolDiagnostics.noMatches({ pattern: params.pattern, searched, include: params.include }),
+          })
           if (!params.pattern) {
             throw new Error("pattern is required")
           }
@@ -59,16 +63,20 @@ export const GrepTool = Tool.define(
 
           const search = FSUtil.resolve(requested)
           const info = yield* fs.stat(search).pipe(Effect.catch(() => Effect.succeed(undefined)))
-          const cwd = info?.type === "Directory" ? search : path.dirname(search)
+          const isFile = info?.type === "File"
+          const cwd = isFile ? path.dirname(search) : search
           const result = yield* ripgrep.grep({
             cwd,
             pattern: params.pattern,
             include: params.include,
+            // Without this ripgrep searches `.` -- the whole parent directory --
+            // and reports a sibling's matches for a search aimed at one file.
+            file: isFile ? path.basename(search) : undefined,
             limit: 100,
           })
-          if (result.length === 0) return empty
+          if (result.items.length === 0) return empty(search)
 
-          const rows = result.map((item) => ({
+          const rows = result.items.map((item) => ({
             path: path.resolve(
               requestedInfo?.type === "Directory" ? requested : path.dirname(requested),
               item.entry.path,
@@ -77,13 +85,15 @@ export const GrepTool = Tool.define(
             text: item.text,
           }))
 
-          const limit = 100
-          const truncated = rows.length === limit
+          // From ripgrep, not inferred. `rows.length === limit` cannot tell a
+          // search that found exactly 100 matches from one that found more, so
+          // it announced a complete result as partial.
+          const truncated = result.truncated
           const final = rows
-          if (final.length === 0) return empty
+          if (final.length === 0) return empty(search)
 
           const total = rows.length
-          const hasMore = truncated || result.length === limit
+          const hasMore = truncated
           const output = [`Found ${total} matches${hasMore ? " (more matches available)" : ""}`]
 
           let current = ""
@@ -98,7 +108,9 @@ export const GrepTool = Tool.define(
 
           if (truncated) {
             output.push("")
-            output.push("(Results truncated. Consider using a more specific path or pattern.)")
+            output.push(
+              ToolDiagnostics.cappedResults({ shown: total, noun: "matches", narrow: "pattern, path or include" }),
+            )
           }
 
           return {

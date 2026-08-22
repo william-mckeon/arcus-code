@@ -130,3 +130,40 @@ describe("tool.glob", () => {
     }),
   )
 })
+
+// glob derived truncation as `files.length === limit`, which cannot tell a
+// search that found exactly the limit from one that found more. A complete
+// result therefore announced itself as partial, telling the model its picture
+// had holes in it when it did not.
+describe("tool.glob truncation", () => {
+  const many = (dir: string, count: number) =>
+    Effect.promise(async () => {
+      for (let i = 0; i < count; i++) await Bun.write(path.join(dir, `f${String(i).padStart(4, "0")}.ts`), "x\n")
+    })
+
+  it.instance("exactly at the limit is not reported as truncated", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* many(test.directory, 100)
+      const info = yield* GlobTool
+      const glob = yield* info.init()
+      const result = yield* glob.execute({ pattern: "*.ts", path: test.directory }, ctx)
+      expect(result.metadata.truncated).toBe(false)
+      expect(result.output).not.toContain("PARTIAL")
+    }),
+  )
+
+  it.instance("past the limit says how many were shown and that more exist", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* many(test.directory, 101)
+      const info = yield* GlobTool
+      const glob = yield* info.init()
+      const result = yield* glob.execute({ pattern: "*.ts", path: test.directory }, ctx)
+      expect(result.metadata.truncated).toBe(true)
+      expect(result.output).toContain("first 100 files")
+      expect(result.output).toContain("at least 101")
+      expect(result.output).toContain("PARTIAL")
+    }),
+  )
+})

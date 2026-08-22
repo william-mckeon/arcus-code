@@ -30,6 +30,15 @@ const layer = Layer.effect(
     yield* db.run("PRAGMA busy_timeout = 5000")
     yield* db.run("PRAGMA cache_size = -64000")
     yield* db.run("PRAGMA foreign_keys = ON")
+    // Without this, freed pages are never returned: deleting a session leaves
+    // the file exactly as large and the space is silently reused by whatever
+    // grows next. INCREMENTAL rather than FULL so the cost is paid in small
+    // deliberate steps instead of on every commit.
+    //
+    // On a database created before this line existed the mode is baked in at
+    // creation and only a full VACUUM can change it, which is why
+    // `arcus-code db compact --vacuum` exists rather than this being enough.
+    yield* db.run("PRAGMA auto_vacuum = INCREMENTAL")
     yield* db.run("PRAGMA wal_checkpoint(PASSIVE)")
     yield* DatabaseMigration.apply(db)
 
