@@ -11,6 +11,7 @@ import { Session } from "./session"
 import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
+import COLLABORATE from "./prompt/collaborate.txt"
 
 export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   messages: SessionV1.WithParts[]
@@ -23,6 +24,26 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
   if (!userMessage) return input.messages
 
+  // Collaborate mode, injected on every turn rather than once on entry.
+  //
+  // The rule it carries -- confirm before changing anything, even when certain
+  // -- is the opposite of what the system prompt says, which tells the model
+  // never to ask for confirmation. A synthetic user part lands after the system
+  // prompt, so re-stating it each turn is what keeps it from being worn down by
+  // the surrounding instruction over a long session.
+  //
+  // Independent of experimentalPlanMode: this mode has nothing to do with plan
+  // files, and must behave the same under either branch below.
+  if (input.agent.name === "collaborate") {
+    userMessage.parts.push({
+      id: PartID.ascending(),
+      messageID: userMessage.info.id,
+      sessionID: userMessage.info.sessionID,
+      type: "text",
+      text: COLLABORATE,
+      synthetic: true,
+    })
+  }
   if (!flags.experimentalPlanMode) {
     if (input.agent.name === "plan") {
       userMessage.parts.push({

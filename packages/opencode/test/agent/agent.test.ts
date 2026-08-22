@@ -750,6 +750,10 @@ it.instance(
       agent: {
         build: { disable: true },
         plan: { disable: true },
+        // Every primary agent has to be disabled for this to be the case it
+        // names. Collaborate is the third one; forgetting it here would leave
+        // the test passing for the wrong reason on the next mode added.
+        collaborate: { disable: true },
       },
     },
   },

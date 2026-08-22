@@ -180,6 +180,33 @@ const layer = Layer.effect(
             mode: "primary",
             native: true,
           },
+          // Defined AFTER plan on purpose. defaultAgent() picks the first
+          // visible primary in insertion order, so placing this earlier would
+          // silently hand anyone running with `build: disable` an agent that
+          // edits, where they previously got one that cannot. Ordering here is
+          // behaviour, not presentation.
+          collaborate: {
+            name: "collaborate",
+            description:
+              "Works WITH you rather than for you. Assesses, lists the files it intends to touch, and waits for your confirmation before changing anything -- even when it is certain. Reading and searching stay ungated.",
+            options: {},
+            // Deliberately the same capability set as build. The gate is the
+            // confirmation the mode asks for, NOT a withheld tool: taking edit
+            // away would make this plan mode, and the point is that it does the
+            // real work and then holds, rather than being unable to act at all.
+            //
+            // `question` must be allowed -- it is the mechanism the gate runs on.
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                plan_enter: "allow",
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
           general: {
             name: "general",
             description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,

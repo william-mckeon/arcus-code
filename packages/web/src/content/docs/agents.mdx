@@ -27,8 +27,8 @@ Primary agents are the main assistants you interact with directly. You can cycle
 You can use the **Tab** key to switch between primary agents during a session.
 :::
 
-OpenCode comes with two built-in primary agents, **Build** and **Plan**. We'll
-look at these below.
+OpenCode comes with three built-in primary agents, **Build**, **Collaborate**,
+and **Plan**. We'll look at these below.
 
 ---
 
@@ -42,7 +42,7 @@ OpenCode comes with three built-in subagents, **General**, **Explore**, and **Sc
 
 ## Built-in
 
-OpenCode comes with two built-in primary agents and three built-in subagents.
+OpenCode comes with three built-in primary agents and three built-in subagents.
 
 ---
 
@@ -54,6 +54,28 @@ Build is the **default** primary agent with all tools enabled. This is the stand
 
 ---
 
+### Use collaborate
+
+_Mode_: `primary`
+
+An agent that works **with** you rather than for you. It has exactly the same
+tools as Build -- it is not restricted -- but before it changes anything it
+presents what it found, lists every file it intends to update, add, or delete,
+and waits for you to confirm.
+
+It does this **even when it is certain**. That is the whole point: the pause is
+a checkpoint, not a request for clarification. Where Build puts you at the end
+reviewing a diff, Collaborate puts you at the moment of intent, before the work
+is spent -- and correcting an intention costs a sentence where correcting a
+wrong diff costs a revert.
+
+Reading is never gated. It will search, map, and read as much as it needs
+without asking; only changes are held.
+
+This is not Plan mode. Plan cannot edit at all and produces a plan document.
+Collaborate does the real work up front and then holds at the threshold.
+
+---
 ### Use plan
 
 _Mode_: `primary`
