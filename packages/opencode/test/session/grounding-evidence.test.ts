@@ -196,3 +196,22 @@ describe("grounding evidence — tree", () => {
     expect([...e.listed]).toEqual([])
   })
 })
+
+// The live case end to end: the shell call that ran, and the flag it must set.
+// Without this the answer "Docker rebuilt successfully" is reported as an
+// unverified claim, which is a false accusation against a true statement.
+describe("grounding evidence — container builds verify a turn", () => {
+  test("the command from the live session marks the turn verified", () => {
+    expect(collect([toolPart("bash", { command: "docker-compose up -d --build" })]).verified).toBe(true)
+  })
+
+  test("bringing containers up WITHOUT building does not", () => {
+    // Starting a container proves nothing compiled. The distinction is the
+    // whole reason the widening had to name the verb.
+    expect(collect([toolPart("bash", { command: "docker compose up -d" })]).verified).toBe(false)
+  })
+
+  test("a failed build does not verify anything", () => {
+    expect(collect([toolPart("bash", { command: "docker build -t app ." }, "error")]).verified).toBe(false)
+  })
+})

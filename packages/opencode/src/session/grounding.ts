@@ -241,8 +241,16 @@ export const HEDGED =
 // which caught `mkdir build`, `git checkout build` and `npm run dev` -- any of
 // which flipped the verified flag and silenced this net for a whole turn. Hence
 // distinctive tools only, or an explicit `<tool> <verb>`.
+//
+// The docker forms are the mirror scar, found live: `docker-compose up -d
+// --build` genuinely built a project -- Vite compiled, the image was rebuilt --
+// and because nothing here matched, a truthful "rebuilt successfully" was
+// accused of being unverified. Telling someone their correct answer is
+// unsupported is worse than staying quiet, because it spends the trust that
+// makes the warning worth reading. Hence the verb is required: `docker ps` and
+// a bare `docker compose up` still do not count.
 export const CHECK_CMD =
-  /\b(?:pytest|jest|vitest|mocha|tox|nox|ctest|rspec|phpunit|tsc|tsgo|eslint|oxlint|ruff|flake8|pylint|mypy|pyright|black\s+--check|prettier\s+--check|cmake|ninja|bazel|meson|msbuild|xcodebuild|gradle|mvn|make|go\s+(?:test|build|vet)|cargo\s+(?:test|build|check|clippy)|dotnet\s+(?:test|build)|npm\s+(?:test|ci)|npm\s+run\s+(?:\w*test\w*|build|lint|check|typecheck|tsc|compile|ci)|yarn\s+(?:test|build|lint|check|typecheck|tsc)|pnpm\s+(?:test|build|lint|check|typecheck|tsc)|bun\s+(?:test|run\s+(?:\w*test\w*|build|lint|check|typecheck)))\b/i
+  /\b(?:pytest|jest|vitest|mocha|tox|nox|ctest|rspec|phpunit|tsc|tsgo|eslint|oxlint|ruff|flake8|pylint|mypy|pyright|black\s+--check|prettier\s+--check|cmake|ninja|bazel|meson|msbuild|xcodebuild|gradle|mvn|make|go\s+(?:test|build|vet)|cargo\s+(?:test|build|check|clippy)|dotnet\s+(?:test|build)|npm\s+(?:test|ci)|npm\s+run\s+(?:\w*test\w*|build|lint|check|typecheck|tsc|compile|ci)|yarn\s+(?:test|build|lint|check|typecheck|tsc)|pnpm\s+(?:test|build|lint|check|typecheck|tsc)|bun\s+(?:test|run\s+(?:\w*test\w*|build|lint|check|typecheck))|docker\s+build|docker\s+buildx|docker(?:-|\s+)compose[^\n]*--build|podman\s+build|podman(?:-|\s+)compose[^\n]*--build|vite\s+build|next\s+build|nuxt\s+build|tsup|rollup|esbuild|webpack|turbo\s+(?:test|build|lint|typecheck|check))\b/i
 
 // A sentence saying tests do not EXIST is not a claim that they passed. "no
 // tests exist to pass" matched SUCCESS on `tests ... pass` and slipped past

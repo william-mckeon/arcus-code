@@ -564,3 +564,66 @@ describe("grounding.unlistedDirectoryClaims", () => {
     expect(unlistedDirectoryClaims("I looked at `messing with OAC` briefly.", dir())).toEqual([])
   })
 })
+
+// Live finding, 2026-08-23 (session ses_fcfd77ff0, run ca22b96b). The agent ran
+// `docker-compose up -d --build`, it exited 0, Vite compiled and the image was
+// rebuilt -- and the answer "Docker rebuilt and started successfully" was
+// flagged as an unverified success claim, because nothing in CHECK_CMD knew
+// what a container build looks like.
+//
+// A false accusation is the worst thing this layer can produce: telling someone
+// their correct answer is unsupported spends the trust that makes the real
+// warnings worth reading.
+describe("grounding.ranCheck — container and bundler builds", () => {
+  test("the exact command from the live session counts", () => {
+    expect(ranCheck("docker-compose up -d --build")).toBe(true)
+  })
+
+  test("both compose spellings count, and the flag can sit anywhere", () => {
+    for (const cmd of ["docker compose up -d --build", "docker-compose --build up", "podman-compose up --build"]) {
+      expect(ranCheck(cmd)).toBe(true)
+    }
+  })
+
+  test("an explicit image build counts", () => {
+    for (const cmd of ["docker build -t app .", "docker buildx build .", "podman build ."]) {
+      expect(ranCheck(cmd)).toBe(true)
+    }
+  })
+
+  test("bundlers that only ever build count on their own", () => {
+    for (const cmd of ["tsup", "rollup -c", "esbuild src/index.ts --bundle", "webpack --mode production"]) {
+      expect(ranCheck(cmd)).toBe(true)
+    }
+  })
+
+  test("tools that also run dev servers need the verb", () => {
+    // `vite` and `next` alone start a dev server, which verifies nothing.
+    expect(ranCheck("vite build")).toBe(true)
+    expect(ranCheck("next build")).toBe(true)
+    expect(ranCheck("vite")).toBe(false)
+    expect(ranCheck("vite --host")).toBe(false)
+    expect(ranCheck("next dev")).toBe(false)
+  })
+
+  // The other half of the scar, and the reason this widening had to be precise.
+  // An earlier CHECK_CMD matched bare `build`, so `mkdir build` silenced the
+  // success net for a whole turn. Widening carelessly would repeat that.
+  test("docker commands that are NOT builds still do not count", () => {
+    for (const cmd of [
+      "docker ps",
+      "docker compose up -d",
+      "docker-compose down",
+      "docker compose logs -f",
+      "docker images",
+    ]) {
+      expect(ranCheck(cmd)).toBe(false)
+    }
+  })
+
+  test("a path that merely mentions docker is not a check", () => {
+    for (const cmd of ["cat docker/README.md", "ls docker", "rm -rf build"]) {
+      expect(ranCheck(cmd)).toBe(false)
+    }
+  })
+})
