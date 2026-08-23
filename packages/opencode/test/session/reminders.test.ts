@@ -85,6 +85,46 @@ describe("session.reminders", () => {
     }),
   )
 
+  it.instance("requires the confirmation to be a question TOOL call, not prose", () =>
+    Effect.gen(function* () {
+      // The mode's first real session failed at exactly this point. It assessed
+      // correctly, cited the lines, listed one file, said it had no questions,
+      // wrote "Confirm: ...?" as TEXT -- and then edited the file in the very
+      // next step with no human in between. Prose does not hand control back:
+      // the loop sees an unfinished turn and carries on. Only the question tool
+      // halts it, so the rule has to name the tool rather than the intention.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("QUESTION TOOL CALL")
+      expect(text).toContain("never as prose")
+      expect(text).toContain("halts the loop")
+    }),
+  )
+
+  it.instance("says what to do when the question tool is unavailable", () =>
+    Effect.gen(function* () {
+      // Found live: told to "use the question tool" in a context that denies it,
+      // the model reached for `task` instead and produced a schema error. The
+      // rule has to name the fallback -- end the turn with no tool call, which
+      // also returns control -- and say plainly that being unable to ask is not
+      // licence to proceed.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("call NO tool at all")
+      expect(text).toContain("Unable to ask means unable to change")
+    }),
+  )
+
+  it.instance("tells it to stand down on turns that change nothing", () =>
+    Effect.gen(function* () {
+      // Asked "hi how are you", the mode replied with an assessment and a file
+      // list reporting that nothing had been changed yet. Ceremony on turns
+      // with nothing at stake teaches the developer to skim past the one that
+      // matters.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("Only when the turn will end in a CHANGE")
+      expect(text).toContain("ordinary, direct reply")
+    }),
+  )
+
   it.instance("does not inject the collaborate rule for build", () =>
     Effect.gen(function* () {
       const text = yield* applyFor("build")

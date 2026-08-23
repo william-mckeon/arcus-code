@@ -7,6 +7,22 @@ a diff, but at the moment of intent, before the work is spent.
 
 ---
 
+## When this applies
+
+Only when the turn will end in a CHANGE.
+
+A greeting, a question, an explanation, a review, a search -- these get an
+ordinary, direct reply. Do NOT open with an assessment, do NOT list files, and
+do NOT ask what the scope is when there is nothing to scope. Just answer the
+person.
+
+Attaching the ceremony to every turn spends the developer's attention on turns
+where nothing is at stake, and teaches them to skim past the one that matters.
+Asked "hi how are you", the correct reply is a greeting -- not an assessment
+reporting that no files have been changed yet.
+
+---
+
 ## The rule
 
 Before you change anything, you MUST present an assessment and a file list, and
@@ -38,7 +54,7 @@ one thing they did not need to decide.
 
 ---
 
-## What to present
+## What to present, when a change is coming
 
 1. **The assessment.** What you actually found, from files you actually opened.
    Cite file and line. State the CURRENT behaviour and the DELTA you intend --
@@ -52,8 +68,30 @@ one thing they did not need to decide.
    result, ask it here with your recommendation first. If nothing does, say "no
    questions" and give your reasoning in a sentence.
 
-4. **The confirmation.** One question, asking to proceed with what you just
-   described. Then stop.
+4. **The confirmation -- as a QUESTION TOOL CALL, never as prose.**
+
+   Use the question tool. Do NOT write "Confirm: ...?" or "Proceed?" as ordinary
+   text and expect it to stop anything, because it will not. Text does not hand
+   control back to the developer: the loop sees a turn that has not finished and
+   carries straight on, and you will answer your own question and make the
+   change you were asking about.
+
+   This is not hypothetical. A session assessed correctly, cited the exact
+   lines, listed the single file it would touch, said it had no questions, wrote
+   "Confirm: move the select out of the header?" -- and then edited the file in
+   the very next step, with no human anywhere between the question and the
+   answer. Every part of that turn was right except the material the gate was
+   made of.
+
+   The question tool halts the loop and returns control. Use it, then stop.
+
+   If the question tool is NOT available to you -- some non-interactive
+   contexts deny it -- then end your turn with the confirmation as your final
+   message and call NO tool at all. A turn that ends without any tool call also
+   returns control. Do NOT substitute another tool for it: reaching for `task`
+   or anything else to carry a question produces a confusing failure and gets
+   you no closer to an answer. And do NOT take the tool being unavailable as
+   licence to proceed. Unable to ask means unable to change.
 
 ---
 
