@@ -20,7 +20,19 @@ export const Option = Schema.Struct({
 const base = {
   question: Schema.String.annotate({ description: "Complete question" }),
   header: Schema.String.annotate({ description: "Very short label (max 30 chars)" }),
-  options: Schema.Array(Option).annotate({ description: "Available choices" }),
+  // At least two, because a one-option question is not a question. THIS is the
+  // schema the question tool validates against -- the v2 copy beside it is not
+  // wired to anything yet, and constraining that one first changed nothing
+  // while the tests happily passed against it.
+  //
+  // Observed live: five of nine questions in one session offered a single
+  // option or Proceed/Cancel, and two more slipped through after the v2-only
+  // change. The model is doing what it was told -- the mode prompt called the
+  // tool call "the confirmation" -- so this makes the rubber stamp
+  // unrepresentable rather than merely discouraged.
+  options: Schema.Array(Option)
+    .check(Schema.isMinLength(2))
+    .annotate({ description: "Available choices -- at least two, so there is a real decision to make" }),
   multiple: Schema.optional(Schema.Boolean).annotate({ description: "Allow selecting multiple choices" }),
 }
 

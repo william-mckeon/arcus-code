@@ -211,7 +211,7 @@ exports[`tool parameters JSON Schema (wire shape) question 1`] = `
             "type": "boolean",
           },
           "options": {
-            "description": "Available choices",
+            "description": "Available choices -- at least two, so there is a real decision to make",
             "items": {
               "properties": {
                 "description": {
@@ -229,6 +229,7 @@ exports[`tool parameters JSON Schema (wire shape) question 1`] = `
               ],
               "type": "object",
             },
+            "minItems": 2,
             "type": "array",
           },
           "question": {

@@ -2,15 +2,16 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import { Question } from "../src/question"
 
-// A one-option question is not a question. Observed live: of nine questions in
-// a single session, five offered a single option or Proceed/Cancel -- a speed
-// bump with nothing to decide, which spends the developer's attention without
-// buying them a choice.
+// The v2 question schema, which NOTHING is wired to yet -- the running tool
+// validates against QuestionV1 (packages/schema/src/v1/question.ts).
 //
-// The model was following its instructions exactly (the mode prompt called the
-// tool call "the confirmation"), so the wording was fixed too. This constraint
-// exists so the rubber stamp is unrepresentable rather than merely discouraged.
-
+// That distinction cost a release: the constraint was added here first, these
+// tests passed, and two single-option questions went straight through a live
+// session because the model never touches this schema. The test that actually
+// guards the behaviour is packages/opencode/test/tool/question-options.test.ts,
+// which goes through the tool's own Parameters.
+//
+// Kept so v2 carries the same rule the day it is wired up.
 const option = (label: string) => ({ label, description: `pick ${label}` })
 
 const decode = (options: Array<{ label: string; description: string }>) =>

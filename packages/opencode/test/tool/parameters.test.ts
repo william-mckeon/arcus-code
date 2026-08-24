@@ -203,7 +203,11 @@ describe("tool parameters", () => {
             question: "pick one",
             header: "Header",
             custom: false,
-            options: [{ label: "a", description: "desc" }],
+            // Two: the schema requires a genuine choice.
+            options: [
+              { label: "a", description: "desc" },
+              { label: "b", description: "other" },
+            ],
           },
         ],
       })

@@ -77,7 +77,12 @@ describe("tool.question", () => {
         {
           question: "What is your favorite animal?",
           header: "This Header is Over 12",
-          options: [{ label: "Dog", description: "Man's best friend" }],
+          // Two options because the schema now requires a real decision: a
+          // one-option question is a speed bump, not a choice.
+          options: [
+            { label: "Dog", description: "Man's best friend" },
+            { label: "Cat", description: "Aloof but tolerable" },
+          ],
         },
       ]
 
