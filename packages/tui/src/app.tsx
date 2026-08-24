@@ -38,7 +38,6 @@ import { SyncProvider, useSync } from "./context/sync"
 import { DataProvider } from "./context/data"
 import { LocationProvider } from "./context/location"
 import { LocalProvider, useLocal } from "./context/local"
-import { IdleFps } from "./component/idle-fps"
 import { PermissionProvider } from "./context/permission"
 import { DialogModel } from "./component/dialog-model"
 import { DialogSmallModel } from "./component/dialog-small-model"
@@ -195,10 +194,13 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           try: () =>
             createCliRenderer({
               externalOutputMode: "passthrough",
-              // Starting rate. IdleFps lowers it after a minute of nothing
-              // happening and restores it on the next keypress -- an idle
-              // session was measured burning 5.4% of a core repainting an
-              // unchanged screen.
+              // Lowering this does NOT reduce idle CPU. Measured, not assumed:
+              // an idle session burns ~6-8% of a core, and pinning targetFps to
+              // 5 from boot measured 7.86% -- indistinguishable from 60. The
+              // render loop honours the value (it schedules the next frame at
+              // 1000/targetFps), so the cost is simply somewhere else, and an
+              // idle-detection layer here buys nothing. That was built, tested
+              // against a real PTY session, and removed again.
               targetFps: 60,
               gatherStats: false,
               exitOnCtrlC: false,
@@ -321,7 +323,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                               <PromptRefProvider>
                                                                 <EditorContextProvider>
                                                                   <LocationProvider>
-                                                                    <IdleFps />
                                                                     <App
                                                                       onSnapshot={input.onSnapshot}
                                                                       pluginHost={input.pluginHost}
