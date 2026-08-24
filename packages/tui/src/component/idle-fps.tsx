@@ -15,7 +15,17 @@ import { ACTIVE_FPS, IDLE_AFTER_MS, shouldApply, targetFor } from "../idle-fps"
 // near the root so it sees every keypress regardless of which view is up.
 export function IdleFps() {
   const renderer = useRenderer()
-  const sync = useSync()
+  // Read through a guard. This component is mounted near the root of the tree,
+  // and its worst failure mode is not "the frame rate is wrong" but "the TUI
+  // does not start". Nothing here is worth taking the app down for, so a
+  // missing or changed context degrades to "always active" -- the behaviour
+  // before this component existed.
+  let sync: ReturnType<typeof useSync> | undefined
+  try {
+    sync = useSync()
+  } catch {
+    sync = undefined
+  }
 
   let lastActivity = Date.now()
   const wake = () => {
@@ -35,7 +45,17 @@ export function IdleFps() {
     // or a long reply would turn choppy partway through. Checked across all
     // sessions rather than the focused one, so a background task keeps the
     // frame rate up too.
-    const busy = () => Object.values(sync.data.session_status ?? {}).some((status) => status?.type !== "idle")
+    const busy = () => {
+      try {
+        const statuses = sync?.data?.session_status
+        if (!statuses) return false
+        return Object.values(statuses).some((status) => status?.type !== "idle")
+      } catch {
+        // Treat an unreadable status as busy: staying at full rate costs CPU,
+        // dropping wrongly costs the user a stuttering screen.
+        return true
+      }
+    }
 
     // Polled rather than driven by a signal: the point is to notice the ABSENCE
     // of events, which no event can tell us. A quarter of the idle threshold is
