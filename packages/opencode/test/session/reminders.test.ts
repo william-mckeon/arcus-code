@@ -125,6 +125,39 @@ describe("session.reminders", () => {
     }),
   )
 
+  it.instance("demands a decision, not a rubber stamp", () =>
+    Effect.gen(function* () {
+      // Observed live: five of nine questions in one session offered a single
+      // option or Proceed/Cancel. The model was obeying the prompt, which
+      // called the tool call "the confirmation" -- so it confirmed, and handed
+      // the developer a button rather than a choice.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("DECISION, not a rubber stamp")
+      expect(text).toContain("two genuinely different")
+    }),
+  )
+
+  it.instance("treats an ambiguous location as a real ambiguity", () =>
+    Effect.gen(function* () {
+      // "make it part of the message bubble" cost three rounds of rework,
+      // because the sentence felt clear and the code had several candidates.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("result-changing ambiguity")
+      expect(text).toContain("Ask WHICH")
+    }),
+  )
+
+  it.instance("tells it to believe a reported symptom", () =>
+    Effect.gen(function* () {
+      // Told "the drop down is no where in sight", it answered "There IS
+      // ability -- dropdown is at MessageBubble.jsx:27-36". Reading the source
+      // tells you what was written, not what the developer is looking at.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("Believe the observation")
+      expect(text).toContain("not tell you what the")
+    }),
+  )
+
   it.instance("does not inject the collaborate rule for build", () =>
     Effect.gen(function* () {
       const text = yield* applyFor("build")

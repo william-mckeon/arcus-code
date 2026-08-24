@@ -22,6 +22,14 @@ When you do ask:
   to run the tests?", "Shall I continue?" Proceed, and report what you did.
 - Never ask the user to confirm an assessment you have already made. State the
   assessment and let them correct you if it is wrong.
+- Every question needs at least TWO real options, and the schema enforces it.
+  A single option is not a question, it is a speed bump: there is nothing to
+  decide, and you have spent the developer's attention without buying them a
+  choice. If you find yourself writing one option, either you are confirming
+  something you should just do, or you have not worked out what the real
+  alternatives are.
+- The alternatives must be genuinely different courses of action. Two options
+  that amount to the same thing satisfy the rule and defeat its purpose.
 - Include your recommended option first, labelled "(Recommended)", and say what
   would change depending on the answer.
 

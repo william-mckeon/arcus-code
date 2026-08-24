@@ -64,6 +64,13 @@ one thing they did not need to decide.
    one-line reason. Say "no additions" or "no deletions" explicitly when that is
    the case. The developer should know the blast radius before saying yes.
 
+   WHERE something goes is almost always a real ambiguity. When a request names
+   a UI element or a location in words -- "the message bubble", "part of where
+   the user types" -- and the code holds more than one candidate, that is a
+   result-changing ambiguity even when the sentence feels clear. Ask WHICH,
+   with the actual candidates from the code as the options. Guessing costs a
+   build, a rebuild and a correction; asking costs one line.
+
 3. **Your questions, or the absence of them.** If something genuinely changes the
    result, ask it here with your recommendation first. If nothing does, say "no
    questions" and give your reasoning in a sentence.
@@ -85,6 +92,14 @@ one thing they did not need to decide.
 
    The question tool halts the loop and returns control. Use it, then stop.
 
+   Ask a DECISION, not a rubber stamp. At least two genuinely different
+   options, and the schema will reject fewer. "Proceed / Cancel" and a lone
+   "Move it to X" are not decisions: they hand the developer a button, not a
+   choice, and they spend the one thing this mode is meant to protect. If the
+   only option is the thing you already intend, you are not confirming -- you
+   are announcing. State it and act, or work out what the real alternatives
+   are and offer those.
+
    If the question tool is NOT available to you -- some non-interactive
    contexts deny it -- then end your turn with the confirmation as your final
    message and call NO tool at all. A turn that ends without any tool call also
@@ -92,6 +107,22 @@ one thing they did not need to decide.
    or anything else to carry a question produces a confusing failure and gets
    you no closer to an answer. And do NOT take the tool being unavailable as
    licence to proceed. Unable to ask means unable to change.
+
+---
+
+## When the developer says it is not working
+
+Believe the observation. If they say something is missing, invisible or wrong,
+that is EVIDENCE about the running system -- not a misunderstanding for you to
+correct by quoting the code back at them.
+
+Reading the source tells you what was written. It does not tell you what the
+developer is looking at. A component can exist exactly where you say and still
+never render: wrong branch, wrong state, wrong condition, not built yet.
+
+So do not answer "it IS there, see line 27". Go and find out WHY they cannot
+see it. The reason is the actual bug, and it is usually one you have not
+considered yet.
 
 ---
 

@@ -1,6 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { DateTime, Effect, Equal, Hash, Schema } from "effect"
 import { Tool } from "@opencode-ai/core/tool/tool"
 import { define } from "@opencode-ai/plugin/v2/effect"
@@ -15,6 +15,7 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { AbsolutePath } from "@opencode-ai/core/schema"
+import { WorkspaceID } from "@opencode-ai/schema/workspace-id"
 import { SessionV2 } from "@opencode-ai/core/session"
 import { SessionRunnerModel } from "@opencode-ai/core/session/runner/model"
 import { tmpdir } from "./fixture/tmpdir"
@@ -223,4 +224,46 @@ describe("LocationServiceMap", () => {
       ),
     ),
   )
+})
+
+// A live session booted the location service stack twice for the same directory,
+// 0.5s apart, and the first theory was that Location.Ref -- a plain
+// Schema.Struct -- lacked Equal/Hash, making identical refs distinct LayerMap
+// keys. That theory is WRONG, and these tests exist so nobody spends an
+// afternoon on it again (this file is where they would look).
+//
+// Effect v4 gives plain Schema structs structural equality. A standalone script
+// suggested otherwise only because importing through absolute paths outside the
+// workspace loaded a SECOND copy of effect, so Equal.symbol did not match and
+// comparison fell back to reference identity. Inside the real runtime it works.
+//
+// Whatever causes the double boot, it is not key equality.
+describe("Location.Ref identity", () => {
+  test("two refs for the same directory are structurally equal", () => {
+    const a = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/app") })
+    const b = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/app") })
+    expect(a).not.toBe(b)
+    expect(Equal.equals(a, b)).toBe(true)
+  })
+
+  test("and hash to the same value, which is what LayerMap keys on", () => {
+    const a = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/app") })
+    const b = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/app") })
+    expect(Hash.hash(a)).toBe(Hash.hash(b))
+  })
+
+  test("different directories are not equal", () => {
+    const a = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/one") })
+    const b = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/two") })
+    expect(Equal.equals(a, b)).toBe(false)
+  })
+
+  test("the workspace id is part of the identity", () => {
+    const bare = Location.Ref.make({ directory: AbsolutePath.make("C:/proj/app") })
+    const scoped = Location.Ref.make({
+      directory: AbsolutePath.make("C:/proj/app"),
+      workspaceID: WorkspaceID.make("wrk_a"),
+    })
+    expect(Equal.equals(bare, scoped)).toBe(false)
+  })
 })

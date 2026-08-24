@@ -28,7 +28,19 @@ export interface Option extends Schema.Schema.Type<typeof Option> {}
 const base = {
   question: Schema.String.annotate({ description: "Complete question" }),
   header: Schema.String.annotate({ description: "Very short label (max 30 chars)" }),
-  options: Schema.Array(Option).annotate({ description: "Available choices" }),
+  // At least two, because a one-option question is not a question. Observed
+  // live: five of nine questions in one session offered a single option or
+  // Proceed/Cancel -- a speed bump with nothing to decide. The model was doing
+  // exactly what it was told (the prompt said the call was "the confirmation"),
+  // so the wording is fixed too; this makes the rubber stamp unrepresentable
+  // rather than merely discouraged.
+  //
+  // Safe to constrain here: nothing outside the model authors a question. The
+  // HTTP API only lists pending ones and accepts answers, plugins only read
+  // them, and every in-repo constructor already passes two or more.
+  options: Schema.Array(Option)
+    .check(Schema.isMinLength(2))
+    .annotate({ description: "Available choices -- at least two, so there is a real decision to make" }),
   multiple: Schema.Boolean.pipe(optional).annotate({ description: "Allow selecting multiple choices" }),
 }
 
