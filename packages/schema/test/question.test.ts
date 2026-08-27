@@ -89,10 +89,57 @@ describe("Question.Prompt options", () => {
   })
 })
 
-// Guard against the constraint being satisfied in letter but not spirit -- the
-// one thing a schema cannot enforce is that the alternatives are meaningful.
-// Kept as a note rather than a test, because it is a judgement the prompt has
-// to carry: see collaborate.txt and question.txt.
+// The note that used to sit here said a schema cannot enforce that the
+// alternatives are meaningful, and left it to the prompt. That was half right.
+// The prompt did not hold: 14 of 47 live questions padded to two options with a
+// decline -- "Proceed"/"Cancel", "Rebuild"/"Skip" -- satisfying the count with
+// one real path. A decline being a decline IS mechanically checkable, so it is
+// checked here now. What still belongs to the prompt is whether two genuinely
+// different actions are the RIGHT two.
+describe("Question.Prompt options - a decline is not the second choice", () => {
+  test("Proceed / Cancel is rejected", async () => {
+    expect(await accepts([option("Proceed"), option("Cancel")])).toBe(false)
+  })
+
+  test("Rebuild / Skip is rejected", async () => {
+    expect(await accepts([option("Rebuild"), option("Skip")])).toBe(false)
+  })
+
+  test("two real alternatives plus a decline are accepted", async () => {
+    expect(await accepts([option("Modernize the dropdown"), option("Move it above the input"), option("Cancel")])).toBe(
+      true,
+    )
+  })
+
+  test("Proceed / Hold is rejected", async () => {
+    expect(await accepts([option("Proceed"), option("Hold")])).toBe(false)
+  })
+
+  test("a decline word inside a real choice is not a decline", async () => {
+    // Whole-label matching, never prefix: "Skip tests" proposes an action.
+    expect(await accepts([option("Skip tests"), option("Run tests")])).toBe(true)
+    expect(await accepts([option("Stop the container"), option("Restart the container")])).toBe(true)
+    expect(await accepts([option("Hold the connection open"), option("Close after each call")])).toBe(true)
+    expect(await accepts([option("Leave it running"), option("Tear it down")])).toBe(true)
+  })
+
+  test("Info carries the decline rule too", async () => {
+    // Same reason Info carries the min-length rule: otherwise a rubber stamp
+    // reaches the UI by the other path.
+    const rubber = await Schema.decodeUnknownPromise(Question.Info)({
+      question: "Proceed?",
+      header: "Confirm",
+      options: [option("Proceed"), option("Cancel")],
+    }).then(
+      () => true,
+      () => false,
+    )
+    expect(rubber).toBe(false)
+  })
+})
+
+// Guard against the constraint being satisfied in letter but not spirit -- what
+// a schema still cannot enforce is that the two actions are the right two.
 describe("Question.Prompt shape", () => {
   test("an option needs both a label and a description", async () => {
     const missing = await Schema.decodeUnknownPromise(Question.Prompt)({

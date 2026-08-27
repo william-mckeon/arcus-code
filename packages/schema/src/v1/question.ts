@@ -17,6 +17,18 @@ export const Option = Schema.Struct({
   description: Schema.String.annotate({ description: "Explanation of choice" }),
 }).annotate({ identifier: "QuestionOption" })
 
+/**
+ * Bare declines -- "Cancel", "Skip", "No". Matched WHOLE, never by prefix:
+ * "Skip tests" is a real alternative to "Run tests" and has to stay legal. The
+ * prefix version of this check would have rejected it.
+ */
+const DECLINE =
+  /^(cancel|skip|no|nope|abort|stop|don'?t|nevermind|never mind|back|exit|quit|hold|hold off|wait|later|not now|leave it|leave as is)[.!]?$/i
+
+/** Options that actually propose doing something, as opposed to backing out. */
+export const substantive = (options: ReadonlyArray<{ readonly label: string }>) =>
+  options.filter((option) => !DECLINE.test(option.label.trim()))
+
 const base = {
   question: Schema.String.annotate({ description: "Complete question" }),
   header: Schema.String.annotate({ description: "Very short label (max 30 chars)" }),
@@ -30,9 +42,23 @@ const base = {
   // change. The model is doing what it was told -- the mode prompt called the
   // tool call "the confirmation" -- so this makes the rubber stamp
   // unrepresentable rather than merely discouraged.
+  // Counting options was not enough. isMinLength(2) killed the one-option
+  // question -- zero have appeared since it shipped -- but the shape came back
+  // one level up: "Rebuild"/"Skip" and "Proceed"/"Cancel" satisfy the count
+  // while leaving exactly one thing the developer can actually choose to do.
+  // Across 47 real questions, 14 had this shape. So the rule is two options
+  // that PROPOSE something; a decline is still allowed, it just cannot be the
+  // second one.
   options: Schema.Array(Option)
     .check(Schema.isMinLength(2))
-    .annotate({ description: "Available choices -- at least two, so there is a real decision to make" }),
+    .check(
+      Schema.makeFilter((options: ReadonlyArray<{ readonly label: string }>) =>
+        substantive(options).length >= 2
+          ? undefined
+          : "needs at least two options that propose an action -- a decline like Cancel or Skip does not count as the second choice, so offer the real alternatives instead",
+      ),
+    )
+    .annotate({ description: "Available choices -- at least two real alternatives, not one action plus Cancel" }),
   multiple: Schema.optional(Schema.Boolean).annotate({ description: "Allow selecting multiple choices" }),
 }
 

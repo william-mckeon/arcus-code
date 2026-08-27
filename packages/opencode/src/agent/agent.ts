@@ -201,6 +201,36 @@ const layer = Layer.effect(
               Permission.fromConfig({
                 question: "allow",
                 plan_enter: "allow",
+                // The prompt says destructive shell is gated. Told to start a
+                // server, it found port 8080 busy and ran `Stop-Process -Force`
+                // on the process holding it -- after stopping to ask sixteen
+                // times about writing files. It read the kill as a step toward
+                // an approved goal rather than as its own decision.
+                //
+                // So the irreversible verbs get a backstop that does not depend
+                // on the model classifying them correctly. Deliberately short:
+                // this is for things that destroy state the session did not
+                // create, where a wrong call cannot be undone. Everything else
+                // still runs freely, and `user` merges after this, so any of it
+                // can be overridden in config.
+                //
+                // Patterns are *verb* rather than verb* because these arrive
+                // inside compound commands -- the observed one was
+                // `docker rm -f calc-backend; docker ps -a | ...`.
+                bash: {
+                  "*Stop-Process*": "ask",
+                  "*taskkill*": "ask",
+                  "*kill -9*": "ask",
+                  "*docker rm*": "ask",
+                  "*docker system prune*": "ask",
+                  "*rm -rf*": "ask",
+                  "*Remove-Item*-Recurse*": "ask",
+                  "*git reset --hard*": "ask",
+                  "*git clean*": "ask",
+                  "*git push*--force*": "ask",
+                  "*DROP TABLE*": "ask",
+                  "*DROP DATABASE*": "ask",
+                },
               }),
               user,
             ),

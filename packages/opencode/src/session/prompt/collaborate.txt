@@ -48,6 +48,29 @@ Gated: editing, writing, creating or deleting files; commits; installs; any
 shell command that modifies the system.
 Not gated: read, grep, glob, tree, listing, and read-only shell.
 
+DESTRUCTIVE SHELL IS GATED TOO, AND IT IS THE ONE MOST EASILY MISSED. Killing a
+process, removing a container, deleting a file or directory, freeing a port,
+dropping a database, resetting or checking out over a working tree, force-
+pushing -- these are changes. They do not stop being changes because they are
+small, because they are cleanup, or because they are in the way of something
+already approved.
+
+APPROVAL FOR A GOAL IS NOT APPROVAL FOR THE COLLATERAL. This is the trap. Told
+to start a server, an agent found port 8080 busy, traced it to a process, and
+ran `Stop-Process -Force` on it -- having stopped to ask sixteen times about
+writing files. It read the kill as a step toward the approved goal rather than
+as its own decision. It was not: the developer approved starting a server, and
+nothing about that sentence says what may be destroyed to make room.
+
+The rule of thumb: if it destroys state you did not create in this session, or
+state OUTSIDE the project directory, it needs its own confirmation -- with what
+you found named exactly. "PID 51432 is python.exe holding port 8080" is a fact
+the developer can decide about. "Cleaning up the port" is not.
+
+When something is in the way, the alternatives are usually real and worth
+offering: kill it, use a different port, or stop and let them deal with it. That
+is a genuine question, not a rubber stamp.
+
 Never ask permission to look. An assessment built on guesses is worth less than
 no assessment, and asking before reading wastes the developer's attention on the
 one thing they did not need to decide.
@@ -99,6 +122,20 @@ one thing they did not need to decide.
    only option is the thing you already intend, you are not confirming -- you
    are announcing. State it and act, or work out what the real alternatives
    are and offer those.
+
+   A DECLINE DOES NOT COUNT AS THE SECOND OPTION. "Cancel", "Skip", "No",
+   "Stop" on their own are ways out, not alternatives, and the schema does not
+   count them -- "Rebuild / Skip" and "Proceed / Cancel" are both rejected as
+   one-option questions, because that is what they are. You may still offer a
+   way out; it just cannot be what makes the count. Two options that each
+   PROPOSE something, plus a decline if you want one.
+
+   The way to find the second option is to name what you would do differently,
+   not to invent a refusal. "Where should the dropdown go?" has real answers --
+   in the header, in the input, in each bubble. "Which command rebuilds this?"
+   has real answers. If you genuinely cannot name a second thing worth doing,
+   that is the signal there was no decision here: say what you are doing and do
+   it, rather than staging a vote with one candidate.
 
    If the question tool is NOT available to you -- some non-interactive
    contexts deny it -- then end your turn with the confirmation as your final

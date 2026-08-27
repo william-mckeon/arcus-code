@@ -137,6 +137,34 @@ describe("session.reminders", () => {
     }),
   )
 
+  it.instance("gates destructive shell, and says approval does not cover collateral", () =>
+    Effect.gen(function* () {
+      // It gated sixteen times on writing files, then force-killed a process it
+      // had never named, to free a port for a server it had been asked to start.
+      // "Any shell command that modifies the system" was already in the prompt;
+      // what was missing was that a kill counts, and that approving a GOAL does
+      // not approve whatever is destroyed to reach it.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("DESTRUCTIVE SHELL IS GATED TOO")
+      expect(text).toContain("APPROVAL FOR A GOAL IS NOT APPROVAL FOR THE COLLATERAL")
+      expect(text).toContain("state OUTSIDE the project directory")
+    }),
+  )
+
+  it.instance("says a decline does not count as the second option", () =>
+    Effect.gen(function* () {
+      // Requiring two options killed the one-option question, and the shape came
+      // back padded: "Rebuild"/"Skip", "Proceed"/"Cancel" -- the count satisfied
+      // with one real path, 14 times across 47 live questions. The schema now
+      // rejects those, so the prompt has to say why, or the model just gets an
+      // opaque failure and retries the same shape.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("A DECLINE DOES NOT COUNT AS THE SECOND OPTION")
+      expect(text).toContain("each")
+      expect(text).toContain("PROPOSE something")
+    }),
+  )
+
   it.instance("treats an ambiguous location as a real ambiguity", () =>
     Effect.gen(function* () {
       // "make it part of the message bubble" cost three rounds of rework,

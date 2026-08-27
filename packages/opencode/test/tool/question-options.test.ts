@@ -69,3 +69,80 @@ describe("question tool parameters", () => {
     expect(message).toMatch(/length|minimum|2|item/)
   })
 })
+
+// Requiring two options killed the one-option question outright -- none has
+// appeared since it shipped. The shape came back one level up: pad to two with
+// "Cancel" and the count is satisfied while the developer still has exactly one
+// thing they can choose to do. 14 of 47 real questions had that shape.
+describe("question tool parameters - a decline is not the second choice", () => {
+  test("Proceed / Cancel is rejected", async () => {
+    expect(await ask([option("Proceed"), option("Cancel")])).toBe(false)
+  })
+
+  test("Rebuild / Skip is rejected", async () => {
+    // Verbatim from a live Inkling-Small turn -- passed the count, still a button.
+    expect(await ask([option("Rebuild"), option("Skip")])).toBe(false)
+  })
+
+  test("an action plus several declines is still rejected", async () => {
+    expect(await ask([option("Proceed full redesign"), option("Cancel"), option("No")])).toBe(false)
+  })
+
+  test("two real alternatives plus a decline are accepted", async () => {
+    // Offering a way out is fine -- it just cannot BE the alternative.
+    expect(await ask([option("Modernize the dropdown"), option("Move it above the input"), option("Cancel")])).toBe(true)
+  })
+
+  test("the real question from the same session is accepted", async () => {
+    // Verbatim, the good one: two genuine placements, one with a line number.
+    expect(
+      await ask([
+        option("Center header title only (App.jsx:265)"),
+        option("Center the whole main content differently"),
+      ]),
+    ).toBe(true)
+  })
+
+  test("Proceed / Hold is rejected", async () => {
+    // The one miss in an otherwise clean 16-question session: "Hold" is a way
+    // out dressed as an option. Same shape as Proceed/Cancel.
+    expect(await ask([option("Proceed"), option("Hold")])).toBe(false)
+  })
+
+  test("the other deferral words are declines too", async () => {
+    expect(await ask([option("Apply the change"), option("Wait")])).toBe(false)
+    expect(await ask([option("Apply the change"), option("Later")])).toBe(false)
+    expect(await ask([option("Apply the change"), option("Not now")])).toBe(false)
+    expect(await ask([option("Apply the change"), option("Leave as is")])).toBe(false)
+  })
+
+  test("a decline WORD inside a real choice is not a decline", async () => {
+    // The reason DECLINE matches whole labels and never prefixes: "Skip tests"
+    // proposes an action. A prefix match would reject this and teach the model
+    // that a legitimate choice is illegal.
+    expect(await ask([option("Skip tests"), option("Run tests")])).toBe(true)
+    expect(await ask([option("No-cache rebuild"), option("Incremental rebuild")])).toBe(true)
+    expect(await ask([option("Stop the container"), option("Restart the container")])).toBe(true)
+    // The widened list must not eat these either.
+    expect(await ask([option("Hold the connection open"), option("Close after each call")])).toBe(true)
+    expect(await ask([option("Wait for the build"), option("Return immediately")])).toBe(true)
+    expect(await ask([option("Leave it running"), option("Tear it down")])).toBe(true)
+  })
+
+  test("declines are matched regardless of case and trailing punctuation", async () => {
+    expect(await ask([option("Apply the change"), option("cancel")])).toBe(false)
+    expect(await ask([option("Apply the change"), option("Cancel.")])).toBe(false)
+    expect(await ask([option("Apply the change"), option("  Skip  ")])).toBe(false)
+  })
+
+  test("the rejection explains what to offer instead", async () => {
+    const message = await Schema.decodeUnknownPromise(Parameters)({
+      questions: [{ question: "Proceed?", header: "Confirm", options: [option("Proceed"), option("Cancel")] }],
+    }).then(
+      () => "accepted",
+      (error) => String(error).toLowerCase(),
+    )
+    expect(message).not.toBe("accepted")
+    expect(message).toMatch(/decline|cancel|propose|alternative/)
+  })
+})
