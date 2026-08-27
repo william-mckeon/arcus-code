@@ -105,6 +105,22 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   if (!body) return
 
   const responseBody = JSON.stringify(body)
+
+  // The Codex backend reports a plain { detail: "..." } with no `type` and no
+  // `error`, so it fell straight through the guard below and surfaced as a raw
+  // body. Its message is the actionable part -- "The 'gpt-5.3-codex-spark'
+  // model is not supported when using Codex with a ChatGPT account" tells you
+  // exactly what to do, if anyone reads it out. Narrow on purpose: only when
+  // there is no `error` object to shadow.
+  if (!body.error && typeof body.detail === "string" && body.detail.trim().length > 0) {
+    return {
+      type: "api_error",
+      message: body.detail,
+      isRetryable: false,
+      responseBody,
+    }
+  }
+
   if (body.type !== "error") return
 
   switch (body?.error?.code) {

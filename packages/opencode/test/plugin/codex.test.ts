@@ -1,12 +1,56 @@
 import { describe, expect, test } from "bun:test"
 import {
   CodexAuthPlugin,
+  availableOnSubscription,
   parseJwtClaims,
   extractAccountIdFromClaims,
   extractAccountId,
   renderOAuthError,
   type IdTokenClaims,
 } from "../../src/plugin/openai/codex"
+
+// On a ChatGPT-account login the picker offered exactly one Codex model,
+// gpt-5.3-codex-spark, and the server refused every request for it:
+//
+//   400 "The 'gpt-5.3-codex-spark' model is not supported when using Codex
+//        with a ChatGPT account."
+//
+// while gpt-5.3-codex -- the 400k one that might work -- was filtered out by
+// the `> 5.4` version rule, since 5.3 is not greater than 5.4. So the only
+// Codex model reachable was the one that cannot run. Exactly one attempt
+// appears in the session history, and it never reached a model.
+describe("plugin.codex model availability on a ChatGPT account", () => {
+  test("does not offer gpt-5.3-codex-spark", () => {
+    expect(availableOnSubscription("gpt-5.3-codex-spark")).toBe(false)
+  })
+
+  test("the disallow survives being re-added to the allowlist", () => {
+    // DISALLOWED is checked before ALLOWED precisely so a future edit that
+    // re-adds spark cannot resurrect a model the server refuses.
+    expect(availableOnSubscription("gpt-5.5-pro")).toBe(false)
+  })
+
+  test("still offers the models that do work", () => {
+    expect(availableOnSubscription("gpt-5.5")).toBe(true)
+    expect(availableOnSubscription("gpt-5.4")).toBe(true)
+    expect(availableOnSubscription("gpt-5.4-mini")).toBe(true)
+    expect(availableOnSubscription("gpt-5.6-luna")).toBe(true)
+    expect(availableOnSubscription("gpt-5.6-sol")).toBe(true)
+  })
+
+  test("still excludes what it excluded before", () => {
+    expect(availableOnSubscription("gpt-5.6")).toBe(false)
+    expect(availableOnSubscription("gpt-4o")).toBe(false)
+    expect(availableOnSubscription("o3")).toBe(false)
+    expect(availableOnSubscription("gpt-5.5", "pro")).toBe(false)
+  })
+
+  test("gpt-5.3-codex remains excluded by the version rule", () => {
+    // Not a bug being fixed here -- it is untested against a real ChatGPT
+    // account, and allowlisting an unverified model is how spark got in.
+    expect(availableOnSubscription("gpt-5.3-codex")).toBe(false)
+  })
+})
 
 function createTestJwt(payload: object): string {
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")

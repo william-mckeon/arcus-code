@@ -12,8 +12,17 @@ const ISSUER = "https://auth.openai.com"
 const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
 const OAUTH_PORT = 1455
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
-const ALLOWED_MODELS = new Set(["gpt-5.5", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini"])
-const DISALLOWED_MODELS = new Set(["gpt-5.5-pro"])
+const ALLOWED_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
+// gpt-5.3-codex-spark was on ALLOWED_MODELS, so the picker offered it to
+// ChatGPT-account users and the server refused every request:
+//
+//   400 "The 'gpt-5.3-codex-spark' model is not supported when using Codex
+//        with a ChatGPT account."
+//
+// Listed here rather than merely removed from ALLOWED_MODELS: the version rule
+// below excludes 5.3 today, but if that rule is ever loosened this would
+// silently come back as an option that cannot work.
+const DISALLOWED_MODELS = new Set(["gpt-5.5-pro", "gpt-5.3-codex-spark"])
 
 interface PkceCodes {
   verifier: string
@@ -140,6 +149,24 @@ async function refreshAccessToken(refreshToken: string, issuer = ISSUER): Promis
 
 // Kept as a named export for plugin.codex tests; delegates to the shared branded page.
 export const renderOAuthError = (error: string) => OauthCallbackPage.error(error, { provider: "ChatGPT" })
+
+/**
+ * Whether a model can actually be used on a ChatGPT-account (OAuth) login, as
+ * opposed to a platform API key.
+ *
+ * Exported because this predicate is the thing that broke: spark sat on the
+ * allowlist and was offered to every subscription user, while the server
+ * refused it on every request. Inline in the models() hook it was only
+ * reachable by standing up the whole plugin, so nothing tested it.
+ */
+export function availableOnSubscription(apiID: string, reasoningMode?: string): boolean {
+  if (reasoningMode === "pro") return false
+  if (DISALLOWED_MODELS.has(apiID)) return false
+  if (ALLOWED_MODELS.has(apiID)) return true
+  if (apiID === "gpt-5.6") return false
+  const match = apiID.match(/^gpt-(\d+\.\d+)/)
+  return match ? parseFloat(match[1]) > 5.4 : false
+}
 
 interface PendingOAuth {
   pkce: PkceCodes
@@ -282,14 +309,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
 
         return Object.fromEntries(
           Object.entries(provider.models)
-            .filter(([, model]) => {
-              if (model.options.reasoningMode === "pro") return false
-              if (ALLOWED_MODELS.has(model.api.id)) return true
-              if (DISALLOWED_MODELS.has(model.api.id)) return false
-              if (model.api.id === "gpt-5.6") return false
-              const match = model.api.id.match(/^gpt-(\d+\.\d+)/)
-              return match ? parseFloat(match[1]) > 5.4 : false
-            })
+            .filter(([, model]) => availableOnSubscription(model.api.id, model.options.reasoningMode as string))
             .map(([modelID, model]) => [
               modelID,
               {
