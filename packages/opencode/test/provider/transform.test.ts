@@ -1834,12 +1834,113 @@ describe("ProviderTransform.message - Mistral tool call IDs", () => {
         {},
       )
 
-      expect(result).toMatchObject([
-        { role: "assistant", content: [{ type: "tool-call", toolCallId: "toolu01CB" }] },
-        { role: "tool", content: [{ type: "tool-result", toolCallId: "toolu01CB" }] },
-      ])
+      // The exact value is not the contract -- Mistral only requires 9
+      // alphanumeric characters, and that a call and its result agree. Asserting
+      // the literal truncation was what let the collision below ship.
+      const call = (result[0] as any).content[0].toolCallId
+      const output = (result[1] as any).content[0].toolCallId
+      expect(call).toMatch(/^[a-zA-Z0-9]{9}$/)
+      expect(output).toBe(call)
     },
   )
+
+  // The bug this describe block failed to catch. Every test above uses ONE id,
+  // so truncating to the first 9 characters looked correct. Our call IDs are
+  // time-ordered and share a long prefix, so in a real session truncation
+  // collapsed them onto each other and Mistral rejected the whole request with
+  // "Duplicate tool call id in assistant message" -- even for a bare "hi", since
+  // the duplicate lives in the replayed history rather than the new input.
+  test("keeps prefix-sharing IDs distinct", () => {
+    // Verbatim from the session that failed: 153 real IDs became 10.
+    const ids = [
+      "call_01a030298763794188e5298d",
+      "call_01a030298dc771a3b3c76d63",
+      "call_01a03029f620791284cfa055",
+      "call_01a0302a00867e108c9aec5f",
+    ]
+    const result = ProviderTransform.message(
+      ids.flatMap((id) => [
+        {
+          role: "assistant",
+          content: [{ type: "tool-call", toolCallId: id, toolName: "read", input: { filePath: "/tmp/x" } }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "tool-result", toolCallId: id, toolName: "read", output: { type: "text", value: "x" } }],
+        },
+      ]) as any,
+      {
+        id: "mistral/codestral-latest",
+        providerID: "mistral",
+        api: { id: "codestral-latest", url: "https://api.mistral.ai/v1", npm: "@ai-sdk/mistral" },
+      } as any,
+      {},
+    )
+
+    const calls = result
+      .filter((m: any) => m.role === "assistant" && m.content[0]?.type === "tool-call")
+      .map((m: any) => m.content[0].toolCallId)
+
+    expect(calls).toHaveLength(ids.length)
+    expect(new Set(calls).size).toBe(ids.length)
+    for (const id of calls) expect(id).toMatch(/^[a-zA-Z0-9]{9}$/)
+  })
+
+  test("a tool-result still resolves to the same ID as its call", () => {
+    // The three call sites share one map; if they ever stop agreeing, a request
+    // becomes unanswerable tool calls rather than an outright error.
+    const ids = ["call_01a030298763794188e5298d", "call_01a030298dc771a3b3c76d63"]
+    const result = ProviderTransform.message(
+      ids.flatMap((id) => [
+        {
+          role: "assistant",
+          content: [{ type: "tool-call", toolCallId: id, toolName: "read", input: {} }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "tool-result", toolCallId: id, toolName: "read", output: { type: "text", value: "x" } }],
+        },
+      ]) as any,
+      {
+        id: "mistral/codestral-latest",
+        providerID: "mistral",
+        api: { id: "codestral-latest", url: "https://api.mistral.ai/v1", npm: "@ai-sdk/mistral" },
+      } as any,
+      {},
+    )
+
+    const pairs = new Map<string, string>()
+    for (const msg of result as any[]) {
+      const part = msg.content?.[0]
+      if (!part) continue
+      if (part.type === "tool-call") pairs.set(part.toolCallId, "")
+      if (part.type === "tool-result") expect(pairs.has(part.toolCallId)).toBe(true)
+    }
+    expect(pairs.size).toBe(ids.length)
+  })
+
+  test("leaves Claude IDs alone", () => {
+    // The Claude path substitutes characters rather than truncating, so it is
+    // already injective. Renumbering there would be a regression.
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "assistant",
+          content: [{ type: "tool-call", toolCallId: "toolu_01CBhTTz95qkd9LJMdC9sf8t", toolName: "read", input: {} }],
+        },
+      ] as any,
+      {
+        id: "anthropic/claude-3-5-sonnet",
+        providerID: "anthropic",
+        api: { id: "claude-3-5-sonnet-20241022", url: "https://api.anthropic.com", npm: "@ai-sdk/anthropic" },
+        // The Mistral branch returns before normalizeMessages reads these; the
+        // Claude path runs the whole function, so the mock has to carry them.
+        capabilities: { interleaved: false, toolcall: true, reasoning: false },
+      } as any,
+      {},
+    )
+    expect((result[0] as any).content[0].toolCallId).toBe("toolu_01CBhTTz95qkd9LJMdC9sf8t")
+  })
 })
 
 describe("ProviderTransform.message - DeepSeek reasoning content", () => {

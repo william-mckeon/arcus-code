@@ -256,11 +256,31 @@ function normalizeMessages(
     model.providerID === "mistral" ||
     ["mistral", "devstral", "codestral", "pixtral", "mixtral"].some((family) => modelID.includes(family))
   ) {
+    // Mistral requires tool_call_id to be exactly 9 alphanumeric characters.
+    //
+    // Truncating to the first 9 characters satisfies the format and destroys the
+    // identity: our call IDs are time-ordered, so every call in a session shares a
+    // long prefix. Measured on a real 153-call session, `call_01a0302987...` and
+    // 129 others all became "call01a03" -- 153 IDs collapsed to 10, and Mistral
+    // rejected the request with "Duplicate tool call id in assistant message".
+    // It failed on a bare "hi", because the duplicate is in the replayed history
+    // rather than the new input, and it broke every Mistral model rather than any
+    // one of them.
+    //
+    // So renumber instead of truncating. The IDs only have to be internally
+    // consistent within one request payload -- Mistral does not persist them, and
+    // the mapping is rebuilt from the same messages in the same order every time.
+    // A shared map is what keeps a tool-call and its tool-result agreeing; scrub
+    // is called from three places below and all three must resolve identically.
+    const shortened = new Map<string, string>()
     const scrub = (id: string) => {
-      return id
-        .replace(/[^a-zA-Z0-9]/g, "") // Remove non-alphanumeric characters
-        .substring(0, 9) // Take first 9 characters
-        .padEnd(9, "0") // Pad with zeros if less than 9 characters
+      const existing = shortened.get(id)
+      if (existing) return existing
+      // Base36 keeps 9 characters worth ~10^14 distinct values, so the counter
+      // cannot realistically reach a collision inside a single request.
+      const next = (shortened.size + 1).toString(36).padStart(9, "0")
+      shortened.set(id, next)
+      return next
     }
     const result: ModelMessage[] = []
     for (let i = 0; i < msgs.length; i++) {
