@@ -9,9 +9,13 @@ import { Parameters } from "../../src/tool/question"
 // session. Reaching the constraint the way the model reaches it is the only
 // version of this test worth having.
 
-const ask = (options: Array<{ label: string; description: string }>) =>
+// `unresolved` is required, so every acceptance case has to supply one. That is
+// the point: a question now has to say what in the conversation left it open.
+const GAP = "nothing in the request specifies where this goes"
+
+const ask = (options: Array<{ label: string; description: string }>, unresolved: string = GAP) =>
   Schema.decodeUnknownPromise(Parameters)({
-    questions: [{ question: "Where should this go?", header: "Placement", options }],
+    questions: [{ question: "Where should this go?", header: "Placement", options, unresolved }],
   }).then(
     () => true,
     () => false,
@@ -133,6 +137,41 @@ describe("question tool parameters - a decline is not the second choice", () => 
     expect(await ask([option("Apply the change"), option("cancel")])).toBe(false)
     expect(await ask([option("Apply the change"), option("Cancel.")])).toBe(false)
     expect(await ask([option("Apply the change"), option("  Skip  ")])).toBe(false)
+  })
+
+  test("a question must say what in the conversation left it open", async () => {
+    // Two rounds of constraining the OPTIONS did not stop the ceremonial
+    // question. Asked for a README, the model asked "Create simple README /
+    // Wait, change scope" -- two substantive options by every rule above, and
+    // still nothing to decide. The emptiness was never in the options.
+    const missing = await Schema.decodeUnknownPromise(Parameters)({
+      questions: [
+        {
+          question: "Create the README?",
+          header: "README",
+          options: [option("Create it in the root"), option("Create it in docs/")],
+        },
+      ],
+    }).then(
+      () => true,
+      () => false,
+    )
+    expect(missing).toBe(false)
+  })
+
+  test("an empty justification is not a justification", async () => {
+    expect(await ask([option("In the header"), option("In the input")], "")).toBe(false)
+    expect(await ask([option("In the header"), option("In the input")], "   ")).toBe(false)
+  })
+
+  test("a real gap is accepted", async () => {
+    // Verbatim from the shape of a question that was worth asking.
+    expect(
+      await ask(
+        [option("Split directories"), option("Single folder")],
+        "you said 'go backend and react frontend'; nothing says whether they share one directory",
+      ),
+    ).toBe(true)
   })
 
   test("the rejection explains what to offer instead", async () => {

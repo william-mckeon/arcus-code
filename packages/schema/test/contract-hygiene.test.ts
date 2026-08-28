@@ -19,12 +19,47 @@ describe("contract hygiene", () => {
     expect(Schema.encodeSync(Value)({ value: undefined })).toEqual({})
   })
 
-  test("todo status and priority preserve arbitrary strings", () => {
+  // This test used to be called "todo status and priority preserve arbitrary
+  // strings" and asserted that status "waiting" and priority "urgent" decoded
+  // happily. That was the loose contract recorded as though it were a feature:
+  // both fields were Schema.String with the legal values named only in the
+  // description, so nothing rejected a status the rest of the system cannot
+  // render or reason about. Same shape as the question schema that accepted a
+  // one-option question for weeks.
+  test("todo status and priority accept only the values the system understands", () => {
+    const decode = (todo: unknown) => {
+      try {
+        Schema.decodeUnknownSync(SessionTodo.Info)(todo)
+        return "accepted"
+      } catch {
+        return "rejected"
+      }
+    }
+    expect(decode({ content: "ship", status: "waiting", priority: "urgent" })).toBe("rejected")
+    expect(decode({ content: "ship", status: "pending", priority: "high" })).toBe("accepted")
+    expect(decode({ content: "ship", status: "done", priority: "high" })).toBe("rejected")
+  })
+
+  test("a blocked todo can carry the reason it is blocked", () => {
+    // The state the other four could not express. Without it, a plan that has
+    // hit an obstacle is indistinguishable from one still being worked.
     const decode = Schema.decodeUnknownSync(SessionTodo.Info)
-    expect(decode({ content: "ship", status: "waiting", priority: "urgent" })).toEqual({
+    expect(
+      decode({ content: "run the backend", status: "blocked", priority: "high", blockedReason: "go is not installed" }),
+    ).toEqual({
+      content: "run the backend",
+      status: "blocked",
+      priority: "high",
+      blockedReason: "go is not installed",
+    })
+  })
+
+  test("blockedReason is optional, so unblocked todos are unchanged", () => {
+    const decode = Schema.decodeUnknownSync(SessionTodo.Info)
+    expect(decode({ content: "ship", status: "pending", priority: "low" })).toEqual({
       content: "ship",
-      status: "waiting",
-      priority: "urgent",
+      status: "pending",
+      priority: "low",
     })
   })
 

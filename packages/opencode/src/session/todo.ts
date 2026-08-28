@@ -35,11 +35,19 @@ const layer = Layer.effect(
             yield* tx
               .insert(TodoTable)
               .values(
+                // Kept identical to the core copy in
+                // packages/core/src/session/todo.ts. Two services write this
+                // same table, and THIS is the one that runs; a field added to
+                // only one of them persists in some sessions and not others,
+                // which is the drift that made a grep fix land in the unused
+                // implementation and the question constraint land in the
+                // unwired schema.
                 input.todos.map((todo, position) => ({
                   session_id: input.sessionID,
                   content: todo.content,
                   status: todo.status,
                   priority: todo.priority,
+                  blocked_reason: todo.status === "blocked" ? (todo.blockedReason ?? null) : null,
                   position,
                 })),
               )
@@ -60,8 +68,9 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       return rows.map((row) => ({
         content: row.content,
-        status: row.status,
-        priority: row.priority,
+        status: row.status as Info["status"],
+        priority: row.priority as Info["priority"],
+        ...(row.blocked_reason ? { blockedReason: row.blocked_reason } : {}),
       }))
     })
 

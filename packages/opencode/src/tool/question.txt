@@ -38,3 +38,16 @@ Usage notes:
   "Other" or catch-all option yourself.
 - Answers come back as arrays of labels; set `multiple: true` to allow more than
   one selection.
+
+## Saying what is unresolved
+
+Every question must carry `unresolved`: what in the conversation leaves this
+open. Name the GAP, not the action.
+
+  "you said 'go backend and react frontend'; nothing says whether the
+   frontend proxies or calls across origins"                          a gap
+  "the plan assumes a Go toolchain and `go` is not installed"         a gap
+  "whether to create the README they just asked for"                  NOT a gap
+
+If you cannot name what is unresolved, you do not have a question. Say what you
+are doing and do it.

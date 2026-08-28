@@ -46,6 +46,10 @@ const layer = Layer.effect(
                   content: todo.content,
                   status: todo.status,
                   priority: todo.priority,
+                  // Only meaningful on a blocked task. Stored as null otherwise
+                  // so a task that becomes unblocked does not keep an
+                  // explanation that no longer applies.
+                  blocked_reason: todo.status === "blocked" ? (todo.blockedReason ?? null) : null,
                   position,
                 })),
               )
@@ -64,10 +68,15 @@ const layer = Layer.effect(
         .orderBy(asc(TodoTable.position))
         .all()
         .pipe(Effect.orDie)
+      // Read back through the same shape that is written. Dropping a field here
+      // is invisible: it persists correctly and simply never comes back, which
+      // is how blockedReason would have been lost had the column been added
+      // without touching this mapping.
       return rows.map((row) => ({
         content: row.content,
-        status: row.status,
-        priority: row.priority,
+        status: row.status as Info["status"],
+        priority: row.priority as Info["priority"],
+        ...(row.blocked_reason ? { blockedReason: row.blocked_reason } : {}),
       }))
     })
 

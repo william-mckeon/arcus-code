@@ -107,6 +107,11 @@ export const TodoTable = sqliteTable(
     content: text().notNull(),
     status: text().notNull(),
     priority: text().notNull(),
+    // Nullable, because it only applies to `blocked`. Persisted rather than
+    // held in the message, so the reason survives compaction: the whole point
+    // of a blocked task is that someone comes back to it later, and later is
+    // exactly when the conversation that explained it has been summarised away.
+    blocked_reason: text(),
     position: integer().notNull(),
     ...Timestamps,
   },

@@ -91,4 +91,52 @@ describe("SessionTodo", () => {
       ])
     }),
   )
+
+  // A blocked task is the one kind that needs a decision, so the reason it is
+  // blocked has to outlive the turn that discovered it. Held in the message it
+  // would be summarised away, and the task would come back as an unexplained
+  // stop. Both the write mapping and the read mapping have to carry it: the
+  // column can exist and the field still vanish, silently, if either side drops
+  // it. This asserts the whole round trip rather than the column.
+  it.effect("a blocked todo keeps the reason it is blocked, through storage", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const todos = yield* SessionTodo.Service
+
+      yield* todos.update({
+        sessionID,
+        todos: [
+          { content: "run the go backend", status: "blocked", priority: "high", blockedReason: "go is not installed" },
+          { content: "write the react widget", status: "pending", priority: "medium" },
+        ],
+      })
+
+      expect(yield* todos.get(sessionID)).toEqual([
+        { content: "run the go backend", status: "blocked", priority: "high", blockedReason: "go is not installed" },
+        { content: "write the react widget", status: "pending", priority: "medium" },
+      ])
+    }),
+  )
+
+  it.effect("clears the reason when a task stops being blocked", () =>
+    Effect.gen(function* () {
+      // Otherwise a task that was unblocked keeps an explanation that no longer
+      // applies, which reads to anyone later as a task still waiting on it.
+      yield* setup
+      const todos = yield* SessionTodo.Service
+
+      yield* todos.update({
+        sessionID,
+        todos: [{ content: "run the backend", status: "blocked", priority: "high", blockedReason: "no toolchain" }],
+      })
+      yield* todos.update({
+        sessionID,
+        todos: [{ content: "run the backend", status: "in_progress", priority: "high" }],
+      })
+
+      expect(yield* todos.get(sessionID)).toEqual([
+        { content: "run the backend", status: "in_progress", priority: "high" },
+      ])
+    }),
+  )
 })

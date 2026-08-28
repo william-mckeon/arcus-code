@@ -66,6 +66,23 @@ const base = {
       ),
     )
     .annotate({ description: "Available choices -- at least two real alternatives, not one action plus Cancel" }),
+  // Mirrors the v1 copy in v1/question.ts, which is what the running tool
+  // validates against. Constraining only one of the two is how the first
+  // version of the options rule shipped with no effect at all.
+  //
+  // Two rounds of constraining the OPTIONS did not stop the ceremonial
+  // question: the shape survived as one option, then one option plus a decline,
+  // then two real options for something already specified. The emptiness is not
+  // in the options, it is in the absence of a reason -- so the reason is
+  // required, and writing it is what exposes when there is none.
+  unresolved: Schema.String.check(
+    Schema.makeFilter((value: string) =>
+      value.trim().length > 0 ? undefined : "state what in the conversation leaves this question open",
+    ),
+  ).annotate({
+    description:
+      "What in the conversation leaves this open. Name the gap, not the action: 'nothing specifies which port' is a gap; 'whether to create the README they asked for' is not.",
+  }),
   multiple: Schema.Boolean.pipe(optional).annotate({ description: "Allow selecting multiple choices" }),
 }
 
