@@ -176,3 +176,38 @@ describe("LocationMutation", () => {
     })
   })
 })
+
+// The v2 resolver is the single chokepoint for write, edit, read, apply-patch
+// and bash. It classified /c/Users/... as absolute and resolved it against the
+// current drive, so every v2 mutation inherited the same phantom-tree failure
+// as v1. See packages/core/test/fs-util.test.ts for the mechanism.
+if (process.platform === "win32") {
+  const msys = (p: string) => "/" + p[0]!.toLowerCase() + p.slice(2).replaceAll("\\", "/")
+
+  describe("LocationMutation MSYS paths", () => {
+    it.live("resolves a Git Bash drive path to the real file", () =>
+      withTmp((directory) =>
+        Effect.gen(function* () {
+          const targetPath = path.join(directory, "hello.txt")
+          yield* Effect.promise(() => fs.writeFile(targetPath, "hello"))
+          const target = yield* (yield* LocationMutation.Service).resolve({ path: msys(targetPath) })
+
+          expect(target.canonical).toBe(yield* Effect.promise(() => fs.realpath(targetPath)))
+        }).pipe(provide(directory)),
+      ),
+    )
+
+    it.live("resolves a prospective Git Bash path inside the location", () =>
+      withTmp((directory) =>
+        Effect.gen(function* () {
+          const targetPath = path.join(directory, "new.txt")
+          const target = yield* (yield* LocationMutation.Service).resolve({ path: msys(targetPath) })
+          const root = yield* Effect.promise(() => fs.realpath(directory))
+
+          expect(target.canonical).toBe(path.join(root, "new.txt"))
+          expect(target.externalDirectory).toBeUndefined()
+        }).pipe(provide(directory)),
+      ),
+    )
+  })
+}

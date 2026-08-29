@@ -5,6 +5,7 @@ import { Effect, Layer, Schema } from "effect"
 import path from "path"
 import { makeLocationNode } from "../effect/app-node"
 import { Location } from "../location"
+import { FSUtil } from "../fs-util"
 import { Ripgrep } from "../ripgrep"
 import { NonNegativeInt, RelativePath } from "../schema"
 import { PermissionV2 } from "../permission"
@@ -70,7 +71,7 @@ const layer = Layer.effectDiscard(
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
 
-              const root = path.resolve(location.directory, input.path ?? ".")
+              const root = path.resolve(location.directory, FSUtil.windowsPath(input.path ?? "."))
               const allowed = yield* ripgrep.glob({ cwd: root, pattern: "**/*", limit: IGNORE_SAMPLE_LIMIT }).pipe(
                 Effect.map((result) => ({
                   allowed: new Set(result.items.map((entry) => entry.path.replaceAll("\\", "/"))),

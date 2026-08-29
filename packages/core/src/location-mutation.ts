@@ -118,8 +118,12 @@ const layer = Layer.effect(
     })
 
     const resolve = Effect.fn("LocationMutation.resolve")(function* (input: ResolveInput) {
-      const relative = !path.isAbsolute(input.path)
-      const absolute = path.resolve(location.directory, input.path)
+      // Git Bash reports `pwd` as /c/Users/...; Node reads that as rooted on the
+      // current drive and resolves it to C:/c/Users/..., which exists nowhere the
+      // caller meant. Normalise before classifying the path as relative.
+      const requested = FSUtil.windowsPath(input.path)
+      const relative = !path.isAbsolute(requested)
+      const absolute = path.resolve(location.directory, requested)
       const lexicallyInternal = FSUtil.contains(location.directory, absolute)
       if (relative && !lexicallyInternal) return yield* new PathError({ path: input.path, reason: "relative_escape" })
 

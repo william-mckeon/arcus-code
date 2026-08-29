@@ -38,9 +38,15 @@ export const WriteTool = Tool.define(
       execute: (params: { content: string; filePath: string }, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
-          const filepath = path.isAbsolute(params.filePath)
-            ? params.filePath
-            : path.join(instance.directory, params.filePath)
+          // A shell tool running Git Bash reports `pwd` as /c/Users/..., and Node
+          // reads that as a rooted path on the current drive, landing the write in
+          // C:/c/Users/... where it silently succeeds and nobody looks. Normalise
+          // BEFORE the isAbsolute branch. normalizePath cannot be used here: it
+          // resolves against process.cwd() rather than the instance directory.
+          const requested = FSUtil.windowsPath(params.filePath)
+          const filepath = path.isAbsolute(requested)
+            ? requested
+            : path.join(instance.directory, requested)
           yield* assertExternalDirectoryEffect(ctx, filepath)
 
           const exists = yield* fs.existsSafe(filepath)

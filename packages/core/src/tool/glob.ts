@@ -5,6 +5,7 @@ import { Effect, Layer, Schema } from "effect"
 import path from "path"
 import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
+import { FSUtil } from "../fs-util"
 import { Location } from "../location"
 import { Ripgrep } from "../ripgrep"
 import { RelativePath } from "../schema"
@@ -76,7 +77,7 @@ const layer = Layer.effectDiscard(
                   })),
                   truncated: output.truncated,
                 },
-                { pattern: input.pattern, searched: path.resolve(location.directory, input.path ?? ".") },
+                { pattern: input.pattern, searched: path.resolve(location.directory, FSUtil.windowsPath(input.path ?? ".")) },
               ),
             },
           ],
@@ -95,7 +96,7 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
-              const cwd = path.resolve(location.directory, input.path ?? ".")
+              const cwd = path.resolve(location.directory, FSUtil.windowsPath(input.path ?? "."))
               return yield* ripgrep
                 .glob({
                   cwd,

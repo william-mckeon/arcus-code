@@ -572,3 +572,22 @@ describe("tool.edit", () => {
     )
   })
 })
+
+// See the note in write.test.ts. edit resolved paths through the same branch and
+// was fixed the same way.
+if (process.platform === "win32") {
+  const msys = (p: string) => "/" + p[0]!.toLowerCase() + p.slice(2).replaceAll("\\", "/")
+
+  describe("tool.edit MSYS paths", () => {
+    it.instance("edits the real file when given a Git Bash path", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "msys-edit.txt")
+        yield* Effect.promise(() => fs.writeFile(filepath, "before", "utf-8"))
+        yield* run({ filePath: msys(filepath), oldString: "before", newString: "after" })
+
+        expect(yield* load(filepath)).toBe("after")
+      }),
+    )
+  })
+}

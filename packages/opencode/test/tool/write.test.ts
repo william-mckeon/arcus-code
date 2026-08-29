@@ -277,3 +277,41 @@ describe("tool.write", () => {
     )
   })
 })
+
+// A path the shell tool itself just printed must resolve to the same place when
+// handed back to write. Git Bash reports `pwd` as /c/Users/..., and Node reads
+// that leading /c as rooted on the current drive: the file landed in
+// C:\c\Users\... and the write reported success. `mkdir -p` had gone through
+// bash and created the REAL directories, so a listing confirmed the work while
+// every file was somewhere nobody would look.
+if (process.platform === "win32") {
+  const msys = (p: string) => "/" + p[0]!.toLowerCase() + p.slice(2).replaceAll("\\", "/")
+
+  describe("tool.write MSYS paths", () => {
+    it.instance("writes to the real directory when given a Git Bash path", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const target = path.join(test.directory, "msys.txt")
+        yield* run({ filePath: msys(target), content: "landed" })
+
+        const content = yield* Effect.promise(() => fs.readFile(target, "utf-8"))
+        expect(content).toBe("landed")
+      }),
+    )
+
+    it.instance("does not create a phantom directory at the drive root", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const target = path.join(test.directory, "nested", "deep", "msys.txt")
+        yield* run({ filePath: msys(target), content: "landed" })
+
+        expect(yield* Effect.promise(() => fs.readFile(target, "utf-8"))).toBe("landed")
+        // Not `<root>/c` itself: that directory really exists on this machine,
+        // left behind by the runs that found this bug. What must not exist is
+        // the phantom twin of THIS write.
+        const phantom = path.join(path.parse(test.directory).root, msys(target))
+        expect(yield* Effect.promise(() => fs.access(phantom).then(() => true, () => false))).toBe(false)
+      }),
+    )
+  })
+}

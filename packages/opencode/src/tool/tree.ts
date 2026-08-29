@@ -41,7 +41,7 @@ export const TreeTool = Tool.define(
       execute: (params: { path?: string; depth?: number }, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const ins = yield* InstanceState.context
-          const requested = params.path ?? ins.directory
+          const requested = FSUtil.windowsPath(params.path ?? ins.directory)
           const target = path.isAbsolute(requested) ? requested : path.join(ins.directory, requested)
 
           yield* ctx.ask({
