@@ -72,102 +72,72 @@ describe("session.reminders", () => {
     Effect.gen(function* () {
       const text = yield* applyFor("collaborate")
       expect(text).toContain("Collaborate Mode")
-      // The distinguishing rule is no longer "confirm even when certain" -- that
-      // was the micromanagement primitive, and it produced 16 questions against
-      // 20 edits in one real session. What distinguishes the mode now is WHEN
-      // the developer is involved: once, on the plan.
-      expect(text).toContain("The difference is WHEN they are involved")
+      // The mode is build plus a statement of intent. Three earlier versions
+      // built a gate instead -- confirm even when certain, then a phase machine
+      // -- and neither ever showed a measurable benefit while both produced
+      // questions asking the developer to re-affirm what they had just said.
+      expect(text).toContain("exactly build's capabilities")
+      expect(text).toContain("it is what you say while doing it")
     }),
   )
 
-  it.instance("describes three phases and derives them from the todo list", () =>
+  it.instance("asks for findings with file and line, not a restatement", () =>
     Effect.gen(function* () {
       const text = yield* applyFor("collaborate")
-      expect(text).toContain("The three phases")
-      expect(text).toContain("PLAN")
-      expect(text).toContain("BUILD")
-      expect(text).toContain("BLOCKED")
-      expect(text).toContain("TODO LIST tells you which")
+      expect(text).toContain("Say what you found")
+      expect(text).toContain("Cite file and line")
     }),
   )
 
-  it.instance("the collaborate rule states that looking is ungated", () =>
+  it.instance("says narrating is not asking", () =>
     Effect.gen(function* () {
-      // A mode that asked before reading would be unusable, and would spend the
-      // developer's attention on the one decision they do not need to make.
+      // The steering mechanism is interruption, not permission. A developer who
+      // can see what you are about to do can stop you in one sentence; one who
+      // is asked to approve each edit is doing the agent's filing.
       const text = yield* applyFor("collaborate")
-      expect(text).toContain("Looking is never gated")
+      expect(text).toContain("Narrating is not asking")
+      expect(text).toContain("they interrupt, you adjust")
+    }),
+  )
+
+  it.instance("requires naming what could NOT be verified", () =>
+    Effect.gen(function* () {
+      // A run tested a Go backend eight times from PowerShell, reported "live
+      // test passed", and the frontend was broken throughout: the browser sends
+      // a preflight first and no shell client does. The test passed; it was the
+      // wrong test, and nothing said so.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("Say what you could NOT verify")
+      expect(text).toContain("say where the edge was")
     }),
   )
 
   it.instance("forbids re-asking what the developer just said", () =>
     Effect.gen(function* () {
-      // The ceremonial question. Asked for a README, it replied with
-      // ["Create simple README", "Wait, change scope"] -- the second option
-      // being "I was wrong about what I just asked for".
+      // Asked for a README, it replied ["Create simple README", "Wait, change
+      // scope"] -- two substantive options by every rule, and still a question
+      // with nothing to decide.
       const text = yield* applyFor("collaborate")
-      expect(text).toContain("Do NOT ask the developer to re-affirm")
-      expect(text).toContain("you do not have a question")
+      expect(text).toContain("Do NOT ask the developer to confirm what they just told you")
+      expect(text).toContain("is not a question")
     }),
   )
 
-  it.instance("tells it not to re-confirm what the agreed plan settles", () =>
+  it.instance("requires the question tool rather than prose", () =>
     Effect.gen(function* () {
+      // A session assessed correctly, cited the lines, wrote "Confirm: ...?" as
+      // TEXT, and edited the file in the very next step with no human between.
       const text = yield* applyFor("collaborate")
-      expect(text).toContain("DO NOT ASK ABOUT ANYTHING THE PLAN ALREADY SETTLES")
+      expect(text).toContain("use the question tool -- never prose")
+      expect(text).toContain("returns control")
     }),
   )
 
-  it.instance("defines what earns a mid-build interruption", () =>
+  it.instance("says a decline is not the second option", () =>
     Effect.gen(function* () {
-      // The criterion has to be checkable, or "come back when blocked" slides
-      // straight back into asking for reassurance. Reality has to have moved.
       const text = yield* applyFor("collaborate")
-      expect(text).toContain("unbuildable as")
-      expect(text).toContain("whether REALITY MOVED")
-      expect(text).toContain("blockedReason")
-    }),
-  )
-
-  it.instance("requires the confirmation to be a question TOOL call, not prose", () =>
-    Effect.gen(function* () {
-      // The mode's first real session failed at exactly this point. It assessed
-      // correctly, cited the lines, listed one file, said it had no questions,
-      // wrote "Confirm: ...?" as TEXT -- and then edited the file in the very
-      // next step with no human in between. Prose does not hand control back.
-      const text = yield* applyFor("collaborate")
-      expect(text).toContain("USE THE QUESTION TOOL, NEVER PROSE")
-      expect(text).toContain("halts the loop")
-    }),
-  )
-
-  it.instance("says what to do when the question tool is unavailable", () =>
-    Effect.gen(function* () {
-      // Found live: told to "use the question tool" in a context that denies it,
-      // the model reached for `task` instead and produced a schema error.
-      const text = yield* applyFor("collaborate")
-      expect(text).toContain("call NO tool at all")
-    }),
-  )
-
-  it.instance("demands a decision, not a rubber stamp", () =>
-    Effect.gen(function* () {
-      // Five of nine questions in one session offered a single option or
-      // Proceed/Cancel. The model was obeying a prompt that called the tool call
-      // "the confirmation" -- so it confirmed.
-      const text = yield* applyFor("collaborate")
-      expect(text).toContain("ASK A DECISION, NOT A RUBBER STAMP")
-      expect(text).toContain("each PROPOSE")
-    }),
-  )
-
-  it.instance("says a decline does not count as the second option", () =>
-    Effect.gen(function* () {
-      // Requiring two options killed the one-option question; the shape came
-      // back padded with "Skip" and "Cancel", 14 times across 47 live questions.
-      const text = yield* applyFor("collaborate")
-      expect(text).toContain("A decline")
-      expect(text).toContain("cannot be what makes the count")
+      expect(text).toContain("each PROPOSE something")
+      expect(text).toContain("is a way out, not an alternative")
     }),
   )
 
@@ -177,15 +147,12 @@ describe("session.reminders", () => {
       // had never named, to free a port for a server it had been asked to start.
       const text = yield* applyFor("collaborate")
       expect(text).toContain("APPROVAL FOR A GOAL IS NOT APPROVAL FOR THE COLLATERAL")
-      expect(text).toContain("state OUTSIDE the project directory")
+      expect(text).toContain("state OUTSIDE the")
     }),
   )
 
   it.instance("tells it to believe a reported symptom", () =>
     Effect.gen(function* () {
-      // Told "the drop down is no where in sight", it answered "There IS
-      // ability -- dropdown is at MessageBubble.jsx:27-36". Reading the source
-      // tells you what was written, not what the developer is looking at.
       const text = yield* applyFor("collaborate")
       expect(text).toContain("Believe the observation")
     }),
@@ -193,13 +160,23 @@ describe("session.reminders", () => {
 
   it.instance("says to ask the failing surface for its own error", () =>
     Effect.gen(function* () {
-      // The CORS session: it tested the backend from PowerShell eight times and
-      // called it verified, while the browser had already written the diagnosis
-      // in its console. Six steps of server-side reasoning to reach what one
-      // question would have produced.
+      // The browser console names the mechanism, both origins and the preflight
+      // in one line. Re-deriving that from the server side took six steps.
       const text = yield* applyFor("collaborate")
-      expect(text).toContain("ASK FOR THAT SURFACE'S OWN ERROR")
+      expect(text).toContain("ASK FOR THAT SURFACE'S")
       expect(text).toContain("browser console")
+    }),
+  )
+
+  it.instance("tells it not to invent a path root", () =>
+    Effect.gen(function* () {
+      // Seven distinct fabricated roots in one day of testing -- /workspace,
+      // /workdir, /tmp, /work, /backend, /c, /app. In one run it ran
+      // `mkdir -p backend frontend/src` correctly and then wrote to
+      // /workspace/backend/main.go in the same turn.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("Use the path the tools gave you")
+      expect(text).toContain("succeeds somewhere nobody will look")
     }),
   )
 
@@ -228,7 +205,7 @@ describe("session.reminders", () => {
       const text = messages[messages.length - 1]!.parts
         .map((part) => ("text" in part ? String(part.text) : ""))
         .join("\n")
-      expect(text).toContain("The plan you are working to")
+      expect(text).toContain("Your current todo list")
       expect(text).toContain("write the go backend")
       expect(text).toContain("write the react widget")
     }),
@@ -257,18 +234,16 @@ describe("session.reminders", () => {
         .map((part) => ("text" in part ? String(part.text) : ""))
         .join("\n")
       expect(text).toContain("go is not installed")
-      expect(text).toContain("PHASE: BLOCKED")
+      expect(text).toContain("A task is BLOCKED")
       expect(text.indexOf("run the go backend")).toBeLessThan(text.indexOf("write the react widget"))
     }),
   )
 
-  it.instance("states the empty plan rather than saying nothing", () =>
+  it.instance("says nothing about todos when there are none", () =>
     Effect.gen(function* () {
-      // This test used to assert that NOTHING was injected with an empty list.
-      // That left the model inferring "we have not agreed anything yet" from the
-      // absence of a message, which is exactly the reasoning this mechanism
-      // exists to remove. An empty plan is now said out loud, and it is what
-      // puts the session in the PLAN phase.
+      // The phase model injected an "empty plan" notice here so the model could
+      // infer which phase it was in. With the phases gone that is noise on
+      // every early turn.
       const sessions = yield* Session.Service
       const session = yield* sessions.create()
       const messages = yield* SessionReminders.apply({
@@ -279,8 +254,7 @@ describe("session.reminders", () => {
       const text = messages[messages.length - 1]!.parts
         .map((part) => ("text" in part ? String(part.text) : ""))
         .join("\n")
-      expect(text).toContain("no todo list for this session yet")
-      expect(text).toContain("PHASE: PLAN")
+      expect(text).not.toContain("Your current todo list")
     }),
   )
 
@@ -301,7 +275,7 @@ describe("session.reminders", () => {
       const text = messages[messages.length - 1]!.parts
         .map((part) => ("text" in part ? String(part.text) : ""))
         .join("\n")
-      expect(text).not.toContain("The plan you are working to")
+      expect(text).not.toContain("Your current todo list")
     }),
   )
 

@@ -59,36 +59,6 @@ const base = {
       ),
     )
     .annotate({ description: "Available choices -- at least two real alternatives, not one action plus Cancel" }),
-  // What in the conversation left this open.
-  //
-  // Two rounds of constraining the OPTIONS did not stop the ceremonial
-  // question, because the shape kept surviving in a new form: one option, then
-  // one option plus a decline, then two real options for something the
-  // developer had already specified. Asked for a README, the model asked
-  // "Create simple README / Wait, change scope" -- two substantive options by
-  // every rule above, and still a question with nothing to decide.
-  //
-  // The options are not where the emptiness lives. The justification is. A model
-  // that has to write down what is unresolved discovers there is nothing to
-  // write: "the plan says create a README" reads as nonsense, while "you said
-  // 'go backend and react frontend'; nothing says whether the frontend proxies
-  // or calls across origins" reads as a reason. Making it state the gap is what
-  // exposes the absence of one -- the same trick as requiring two options, one
-  // level up.
-  //
-  // Deliberately NOT machine-checked against the conversation. A wrongly
-  // suppressed question costs more than a redundant one, because this mode
-  // exists for the moment the model would otherwise act wrongly. Fail open.
-  unresolved: Schema.String.check(
-    // Trimmed, because isMinLength(1) accepts "   " and a blank justification is
-    // exactly the case this field exists to catch.
-    Schema.makeFilter((value: string) =>
-      value.trim().length > 0 ? undefined : "state what in the conversation leaves this question open",
-    ),
-  ).annotate({
-    description:
-      "What in the conversation leaves this open. Name the gap, not the action: 'nothing specifies which port' is a gap; 'whether to create the README they asked for' is not. If you cannot name one, you do not have a question -- say what you are doing and do it.",
-  }),
   multiple: Schema.optional(Schema.Boolean).annotate({ description: "Allow selecting multiple choices" }),
 }
 

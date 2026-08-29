@@ -18,7 +18,6 @@ const decode = (options: Array<{ label: string; description: string }>) =>
   Schema.decodeUnknownEffect(Question.Prompt)({
     question: "Where should the dropdown go?",
     header: "Placement",
-    unresolved: "nothing in the request specifies where this goes",
     options,
   })
 
@@ -26,7 +25,6 @@ const accepts = async (options: Array<{ label: string; description: string }>) =
   Schema.decodeUnknownPromise(Question.Prompt)({
     question: "Where should the dropdown go?",
     header: "Placement",
-    unresolved: "nothing in the request specifies where this goes",
     options,
   }).then(
     () => true,
@@ -58,7 +56,6 @@ describe("Question.Prompt options", () => {
     const result = await Schema.decodeUnknownPromise(Question.Prompt)({
       question: "Proceed?",
       header: "Confirm",
-      unresolved: "nothing in the request specifies this",
       options: [option("Proceed")],
     }).then(
       () => "accepted",
@@ -72,7 +69,6 @@ describe("Question.Prompt options", () => {
     const decoded = await Schema.decodeUnknownPromise(Question.Prompt)({
       question: "Where?",
       header: "Placement",
-      unresolved: "nothing in the request specifies where",
       options: [option("A"), option("B")],
     })
     expect(decoded.options.map((o) => o.label)).toEqual(["A", "B"])
@@ -84,7 +80,6 @@ describe("Question.Prompt options", () => {
     const one = await Schema.decodeUnknownPromise(Question.Info)({
       question: "Proceed?",
       header: "Confirm",
-      unresolved: "nothing in the request specifies this",
       options: [option("Proceed")],
     }).then(
       () => true,
@@ -134,7 +129,6 @@ describe("Question.Prompt options - a decline is not the second choice", () => {
     const rubber = await Schema.decodeUnknownPromise(Question.Info)({
       question: "Proceed?",
       header: "Confirm",
-      unresolved: "nothing in the request specifies this",
       options: [option("Proceed"), option("Cancel")],
     }).then(
       () => true,
@@ -151,7 +145,6 @@ describe("Question.Prompt shape", () => {
     const missing = await Schema.decodeUnknownPromise(Question.Prompt)({
       question: "Where?",
       header: "Placement",
-      unresolved: "nothing in the request specifies where",
       options: [{ label: "A" }, { label: "B" }],
     }).then(
       () => true,

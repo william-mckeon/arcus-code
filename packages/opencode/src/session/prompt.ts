@@ -55,6 +55,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
+import { Todo } from "./todo"
 import { SessionTools } from "./tools"
 import { Grounding } from "./grounding"
 import { GroundingEvidence } from "./grounding/evidence"
@@ -124,6 +125,7 @@ const layer = Layer.effect(
     const compaction = yield* SessionCompaction.Service
     const plugin = yield* Plugin.Service
     const commands = yield* Command.Service
+    const todoService = yield* Todo.Service
     const config = yield* Config.Service
     const permission = yield* Permission.Service
     const fsys = yield* FSUtil.Service
@@ -1423,6 +1425,10 @@ const layer = Layer.effect(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
+            // apply() reads the todo list so collaborate can restate it each
+            // turn. Without this the service leaks into runLoop's requirement
+            // channel, which is declared as Effect<WithParts> with none.
+            Effect.provideService(Todo.Service, todoService),
           )
 
           const msg: SessionV1.Assistant = {
@@ -1847,6 +1853,8 @@ export const node = LayerNode.make({
   deps: [
     SessionStatus.node,
     Session.node,
+    // Reminders reads the todo list so collaborate can restate it each turn.
+    Todo.node,
     Agent.node,
     Provider.node,
     SessionProcessor.node,

@@ -82,12 +82,22 @@ describe("QuestionTool", () => {
         {
           question: "What should happen?",
           header: "Action",
-          options: [{ label: "Build", description: "Build it" }],
+          // Two substantive options, because a one-option question is a
+          // rubber stamp: there is nothing to decide. The schema rejects fewer
+          // than two, and this v2 test still carried the old single-option
+          // shape after that constraint shipped on the v1 side.
+          options: [
+            { label: "Build", description: "Build it" },
+            { label: "Refactor first", description: "Clean up before building" },
+          ],
         },
         {
           question: "Which environment?",
           header: "Environment",
-          options: [{ label: "Dev", description: "Development" }],
+          options: [
+            { label: "Dev", description: "Development" },
+            { label: "Staging", description: "Staging" },
+          ],
         },
       ]
 
