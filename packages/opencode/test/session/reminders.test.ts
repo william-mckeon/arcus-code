@@ -168,6 +168,31 @@ describe("session.reminders", () => {
     }),
   )
 
+  it.instance("says a substitute does not verify the thing it replaced", () =>
+    Effect.gen(function* () {
+      // A real session found Go missing, wrote a Node server to stand in for the
+      // Go backend, tested through it, and reported the pipeline verified end to
+      // end. The Go source called a stdlib function that does not exist; it
+      // compiled for the first time two turns later and failed instantly. The
+      // test passed because it was measuring the stand-in the run had just
+      // written.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("A SUBSTITUTE IS NOT THE THING")
+      expect(text).toContain("was not the thing you are shipping")
+    }),
+  )
+
+  it.instance("says scratch work belongs outside the project", () =>
+    Effect.gen(function* () {
+      // That same run left its stand-in backend and an invented dotfile in the
+      // repo, and left the dev proxy pointing at a port that died with the
+      // stand-in. The shipped path worked, so nothing looked wrong.
+      const text = yield* applyFor("collaborate")
+      expect(text).toContain("Scaffolding is not deliverable")
+      expect(text).toContain("temp directory")
+    }),
+  )
+
   it.instance("tells it not to invent a path root", () =>
     Effect.gen(function* () {
       // Seven distinct fabricated roots in one day of testing -- /workspace,
