@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -127,6 +127,7 @@ describe("cross-spawn spawner", () => {
         expect(Exit.isFailure(exit)).toBe(true)
       }),
     )
+
   })
 
   describe("env option", () => {
@@ -285,6 +286,42 @@ describe("cross-spawn spawner", () => {
         expect(running).toBe(false)
       }),
     )
+  })
+
+  // The errno is the diagnosis, and it survives only if it reaches the MESSAGE.
+  // Nothing downstream reads `cause`: errorMessage in tui/src/util/error.ts
+  // returns error.message and never walks the cause chain, so an errno left
+  // there reaches neither the model, nor the failed tool row, nor the CLI line,
+  // nor the persisted transcript.
+  //
+  // Before this, every spawn failure rendered as
+  // "Unknown: ChildProcess.spawn (turbo typecheck )" with the errno discarded.
+  // The case that made it matter: Windows returns UNKNOWN when it cannot
+  // execute a file it can otherwise stat, which is what a cloud-storage
+  // placeholder does. UNKNOWN has no matching SystemErrorTag, so it lands on
+  // the unnamed default and the message said nothing about what happened.
+  describe("errnoDescription", () => {
+    const err = (code: string | undefined, message: string) =>
+      Object.assign(new Error(message), code === undefined ? {} : { code }) as NodeJS.ErrnoException
+
+    it("does not repeat a code the message already carries", () => {
+      expect(CrossSpawnSpawner.errnoDescription(err("ENOENT", "spawn sh ENOENT"))).toBe("spawn sh ENOENT")
+      expect(CrossSpawnSpawner.errnoDescription(err("UNKNOWN", "spawn turbo.exe UNKNOWN"))).toBe(
+        "spawn turbo.exe UNKNOWN",
+      )
+    })
+
+    it("prefixes the code when the message omits it", () => {
+      expect(CrossSpawnSpawner.errnoDescription(err("EACCES", "permission denied"))).toBe(
+        "EACCES: permission denied",
+      )
+    })
+
+    it("falls back to whichever half exists", () => {
+      expect(CrossSpawnSpawner.errnoDescription(err(undefined, "no code here"))).toBe("no code here")
+      expect(CrossSpawnSpawner.errnoDescription(err("EBUSY", ""))).toBe("EBUSY")
+      expect(CrossSpawnSpawner.errnoDescription(err(undefined, ""))).toBeUndefined()
+    })
   })
 
   describe("error handling", () => {

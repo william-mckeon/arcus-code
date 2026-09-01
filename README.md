@@ -10,6 +10,10 @@ build it from this repository.
 
 ### Build
 
+On Windows, clone to a plain local path, not into OneDrive or another
+cloud-synced folder. See
+[Windows and cloud-synced folders](CONTRIBUTING.md#windows-and-cloud-synced-folders).
+
 ```bash
 bun install
 cd packages/opencode

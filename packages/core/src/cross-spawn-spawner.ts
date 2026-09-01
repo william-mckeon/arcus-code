@@ -46,8 +46,44 @@ const toTag = (err: NodeJS.ErrnoException): PlatformError.SystemErrorTag => {
     case "ELOOP":
       return "BadResource"
     default:
+      // Windows reports UNKNOWN when it cannot execute a file it can otherwise
+      // stat. A OneDrive placeholder whose content is not local does exactly
+      // that: the path resolves, the header reads as a valid executable, and
+      // spawn still fails. There is no SystemErrorTag that fits it, so it lands
+      // here with every other unmapped errno. The errno itself survives only
+      // because describe() puts it in the message.
       return "Unknown"
   }
+}
+
+/**
+ * The errno, rendered into the message rather than left on `cause`.
+ *
+ * Exported because `proc.on("error")` cannot be provoked through the public
+ * spawn API: cross-spawn runs everything through a shell, so a missing command
+ * exits nonzero instead of failing to spawn, and the shell itself is always
+ * present. The one case that does reach it is a binary that exists and still
+ * cannot be executed, which is not something a test can conjure. Leaving the
+ * formatter untested because the path is awkward is how `windowsPath` came to
+ * be used by two of its nine callers.
+ *
+ * SystemError.message appends `description`; nothing appends `cause`. The one
+ * formatter every consumer of a failed tool call goes through -- errorMessage
+ * in tui/src/util/error.ts -- returns `error.message` and does not walk the
+ * cause chain, so an errno carried only on `cause` reaches no one: not the
+ * model, not the TUI row, not the CLI line, not the persisted transcript.
+ *
+ * Without this, a spawn that failed with UNKNOWN rendered as
+ * "Unknown: ChildProcess.spawn (turbo typecheck )" -- a failure that has erased
+ * its own cause, which is the thing that makes it expensive to diagnose.
+ */
+export const errnoDescription = (err: NodeJS.ErrnoException): string | undefined => {
+  const { code, message } = err
+  if (!code) return message || undefined
+  // Node already writes the code into the message for spawn failures
+  // ("spawn turbo.exe UNKNOWN"). Do not say it twice.
+  if (message && message.includes(code)) return message
+  return message ? `${code}: ${message}` : code
 }
 
 const flatten = (command: ChildProcess.Command) => {
@@ -89,6 +125,7 @@ const toPlatformError = (
     module: "ChildProcess",
     method,
     pathOrDescriptor: cmd,
+    description: errnoDescription(err),
     syscall: err.syscall,
     cause: err,
   })

@@ -32,12 +32,50 @@ https://github.com/anomalyco/models.dev
 ## Developing Arcus Code
 
 - Requirements: Bun 1.3+
+- Clone to a plain local path. On Windows in particular, do not clone into a
+  cloud-synced folder (OneDrive, Dropbox, iCloud Drive, Google Drive). See
+  [Windows and cloud-synced folders](#windows-and-cloud-synced-folders).
 - Install dependencies and start the dev server from the repo root:
 
   ```bash
   bun install
   bun dev
   ```
+
+### Windows and cloud-synced folders
+
+Clone to a plain local path such as `C:\src\arcus-code`. A cloud-synced
+folder breaks this repository in two ways that are hard to recognise from the
+symptom.
+
+**Native binaries stop being executable.** OneDrive Files On-Demand replaces a
+file it has not seen used recently with a placeholder: the path still resolves,
+`ls` still reports the full size, and the header still reads as a valid
+executable, but the content is no longer on disk. Windows cannot execute a
+placeholder, so `spawn` fails with `UNKNOWN` and a command dies with no useful
+explanation. There are around 750 `.exe`, `.node` and `.dll` files under
+`node_modules`, and any of them can be reclaimed at any time. A run of
+`bun run typecheck` that passed in the morning can fail in the afternoon with
+nothing changed, because the toolchain binary was freed in between.
+
+If you must keep the repository in a synced folder, pin the binaries so they
+stay local, and re-pin after every install that adds new ones:
+
+```powershell
+Get-ChildItem -Path .\node_modules -Recurse -File -Force |
+  Where-Object { $_.Extension -in '.exe', '.node', '.dll' } |
+  ForEach-Object { attrib +P -U $_.FullName }
+```
+
+**Recursive mkdir stops being idempotent.** Bun on Windows breaks Node's
+contract that `mkdir(path, { recursive: true })` is a no-op on an existing
+directory when that directory is OneDrive-synced. This silently broke every
+plugin dependency install, and is why
+`packages/core/src/util/mkdir-recursive-compat.ts` exists at all.
+
+Note also that a synced folder uploads and versions everything in
+`node_modules`. `.gitignore` has no bearing on this; the sync client does not
+read it.
 
 ### Running against a different directory
 
